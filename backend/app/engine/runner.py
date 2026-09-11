@@ -32,15 +32,38 @@ Current Task:
 {task_prompt}
 
 CRITICAL RESEARCH & VERIFICATION MANDATE:
-1. TEMPORAL BOUNDING: Today is {current_date}. If the user prompt requests events from a relative timeframe (e.g., 'last month', 'recent', 'this week') or specific date window (e.g., 'between August 15 and September 10, 2026'), strictly compute and adhere to that exact window. Do NOT include older companies or earlier funding rounds simply because they are famous.
-2. ZERO CITATION LAUNDERING: Never invent or assert specific quantitative statistics (e.g. '3.4x faster', '65% cycle time reduction') without an explicit named company case study, whitepaper, or primary source URL. If an observation is conceptual or qualitative, state it as a strategic thesis, not an empirical benchmark.
-3. ENTITY PROVENANCE: When citing funding rounds, valuations, or company milestones, establish the complete verification chain: Company -> Funding Event -> Announcement Date -> Disclosed Amount -> Valuation -> Primary Source Link.
-4. ADVERSARIAL AUDIT & REJECTION PROTOCOL:
-   - When asked to audit claims or find companies meeting strict criteria:
-   - State the exact evidence for every verified claim.
-   - Explicitly list unsupported or out-of-window candidates as REJECTED with the exact reason (e.g., 'REJECTED: Sierra - round announced May 2026, outside target window').
-   - If fewer than the requested number qualify, return ONLY the qualified ones. Never substitute or hallucinate older companies to fill a quota!
-5. METHODOLOGICAL TRANSPARENCY: When asked for a ranking (e.g., 'top 3', '5 largest'), explicitly state your ranking methodology (e.g., 'Ranked strictly by highest disclosed funding amount in USD in descending order; acquisitions excluded').
+1. IMMUTABLE TASK CONSTRAINT NORMALIZATION:
+   - Preserve the user's constraints exactly. Do NOT widen, reinterpret, substitute, or drift from the requested date range, entity category, funding round, funding threshold, quantity, or ranking instruction.
+   - At the beginning of your deliverable, output a normalized TASK CONSTRAINTS block:
+     - Entity Category: (e.g. AI-agent startups only)
+     - Funding Round: (e.g. Series B only, or as requested)
+     - Funding Amount Threshold: (e.g. > $50M USD)
+     - Announcement Window: (Exact start date through exact end date inclusive; never widen)
+     - Result Requirement: (e.g. ALL qualifying companies, or Top N if requested)
+     - Exclusions: (e.g. Acquisitions, unclosed negotiations/rumors, hardware ASICs, older rounds)
+     - Required Fields: (Company, Amount, Lead Investor, Exact Announcement Date, Primary Source URL)
+   - Nothing downstream is allowed to modify or widen these constraints!
+
+2. EPISTEMIC TRI-STATE VERIFICATION CLASSIFICATION:
+   Every discovered candidate entity MUST be explicitly classified into one of three definitive states:
+   - 🟢 [QUALIFIED] — Evidence affirmatively satisfies 100% of the immutable constraints with verified primary-source reporting.
+   - 🔴 [REJECTED - <Exact Criterion Failed>] — Candidate was discovered or audited but demonstrably fails at least one constraint. Specify the EXACT criterion that failed (e.g. '[REJECTED - Round Mismatch: Series C instead of Series B]', '[REJECTED - Date Out of Window: Announced August 4, 2026, outside Sep 1-Sep 8 window]', '[REJECTED - Excluded: Acquisition by Stripe, not equity funding]').
+   - 🟡 [UNVERIFIED - <Reason Incomplete>] — Candidate was surfaced, but retrieved evidence is insufficient to determine full compliance (e.g. '[UNVERIFIED - Incomplete Reporting: Series B announced in Sep 2026, but disclosed amount or lead investor not confirmed in primary text]').
+
+3. EPISTEMIC HUMILITY ON ZERO RESULTS:
+   - Distinguish "My retrieved evidence did not establish any qualifying companies" from "There were no such companies in existence".
+   - If 0 qualify, explicitly state: "In the retrieved live web evidence, 0 candidates strictly met all immutable constraints. Below is the audited breakdown of candidates discovered, rejected, and unverified."
+
+4. ZERO CITATION LAUNDERING:
+   - Never assert unverified quantitative metrics (e.g. '3.4x faster', '65% cycle time reduction') without a named primary source.
+
+5. ENTITY PROVENANCE & PRIMARY SOURCES:
+   - When citing funding rounds, include markdown links to the primary press release or source URLs retrieved in live search.
+
+CRITICAL TOOL INVOCATION RULE:
+- If the task requires researching live web facts, dates, companies, or events, you MUST set "action_type": "call_tool", "tool_name": "web_search", and provide "tool_params": {{"query": "<specific search keywords>"}}.
+- NEVER set "action_type": "finish" with a null or empty "final_response".
+- If finishing, you MUST provide the complete, comprehensive markdown deliverable inside "final_response".
 
 Analyze the task and determine the best action.
 Respond in valid JSON with:
@@ -156,6 +179,18 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
         tool_name = plan.get('tool_name')
         tool_params = plan.get('tool_params') or {}
 
+        # Self-healing: if model intended to search or returned finish with empty response, auto-invoke search
+        has_search_tool = any('search' in t.lower() for t in employee.tools)
+        if has_search_tool:
+            if action_type == 'finish' and not plan.get('final_response'):
+                action_type = 'call_tool'
+                tool_name = 'web_search'
+                tool_params = {'query': task_prompt[:120]}
+            elif action_type == 'call_tool' and not tool_name:
+                tool_name = 'web_search'
+                if not tool_params.get('query'):
+                    tool_params = {'query': task_prompt[:120]}
+
         # Check if action requires human-in-the-loop approval
         if action_type == 'call_tool' and tool_name in employee.requires_approval_for:
             record.status = 'waiting_approval'
@@ -197,18 +232,32 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
             {json.dumps(tool_output, indent=2)}
 
             Synthesize your final deliverable adhering strictly to Defensible Research & Audit Standards:
-            1. TEMPORAL ACCURACY: Verify that every mentioned company, event, or funding round strictly falls inside the requested timeframe relative to {current_date}. Explicitly list the actual announcement date (e.g. Month Day, Year).
+            1. IMMUTABLE TASK CONSTRAINTS BLOCK:
+               Output an explicit, immutable constraints block at the very beginning of your deliverable:
+               - Entity Category: (e.g. AI-agent startups only)
+               - Funding Round: (e.g. Series B only, or as requested)
+               - Funding Amount Threshold: (e.g. > $50M USD)
+               - Announcement Window: (Exact start date through exact end date inclusive; NEVER widen or reinterpret to "Top 2" or different dates)
+               - Result Scope: (e.g. ALL qualifying companies, NOT a top-N subset)
+               - Exclusions: (Acquisitions, rumors, hardware ASICs, non-agent tech)
+               - Required Fields: (Company, Round, Disclosed Amount, Lead Investor, Announcement Date, Primary Source URL)
+
             2. STRUCTURED VERIFICATION TABLE:
-               | Rank | Company | Round | Disclosed USD Amount | Announcement Date | Primary Source Link |
-            3. RANKING METHODOLOGY: Declare the explicit ranking metric (e.g. "Ranked strictly by disclosed USD amount in descending order; acquisitions excluded").
-            4. FACTUAL CLAIM AUDIT (CRITICAL):
-               If the task requires auditing, date bounding, or strict verification, provide a dedicated "Factual Claim Audit":
-               - State each candidate entity and the exact primary source evidence supporting it.
-               - Explicitly mark disqualified/unsupported claims or entities as [REJECTED] with the reason (e.g. "REJECTED: Sierra - announced May 2026, outside August 15 - September 10 window").
-               - If fewer qualify than requested, return fewer. Never substitute older prominent companies to fill the quota.
-            5. ZERO UNSOURCED METRICS: Do not invent unverified percentages (e.g. "65% cycle time") or multipliers (e.g. "3.4x") without a named company report or study. If sharing an observational takeaway, label it clearly as an executive insight.
-            6. PRIMARY EVIDENCE: Include markdown links to source URLs retrieved in the live search.
-            7. STRATEGIC SYNTHESIS: Provide sharp, founder-ready takeaways and marketing copy grounded directly in the verified facts above.
+               | Status | Company | Round | Disclosed USD Amount | Lead Investor | Announcement Date | Primary Source Link |
+               (List ONLY [QUALIFIED] candidates here. If 0 candidates qualify in retrieved evidence, display "— None Qualified in Retrieved Evidence —")
+
+            3. EPISTEMIC TRI-STATE VERIFICATION & AUDIT LOG:
+               Evaluate and classify EVERY discovered candidate entity into:
+               - 🟢 [QUALIFIED] — Affirmatively satisfies 100% of immutable constraints with primary-source evidence.
+               - 🔴 [REJECTED - <Exact Criterion Failed>] — Demonstrably fails at least one constraint (state exact reason: e.g. "Round Mismatch: Series C instead of Series B", "Date Out of Window: Announced August 4, 2026", "Excluded: Acquisition by Stripe").
+               - 🟡 [UNVERIFIED - <Reason Incomplete>] — Surfaced in reporting, but retrieved evidence is insufficient/ambiguous to verify all mandatory fields.
+
+            4. EPISTEMIC HUMILITY ON ZERO RESULTS:
+               - Distinguish "My retrieved evidence did not establish any qualifying companies" from an absolute claim that none exist.
+               - State clearly: "In the retrieved live web evidence across search passes, 0 candidates strictly verified as [QUALIFIED] across all constraints. Below is the audited breakdown of candidates discovered, rejected, and unverified."
+
+            5. ZERO CITATION LAUNDERING:
+               - No fabricated metrics or unverified multipliers. All links must be real markdown links to retrieved URLs.
 
             Output ONLY valid raw JSON with:
             - "thought": (Your internal analysis of the findings and verification audit)
@@ -274,8 +323,34 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
                 Round 2 Evidence:
                 {json.dumps(step2_out, indent=2)}
 
-                Synthesize your FINAL complete deliverable and executive summary for the founder.
-                Adhere strictly to all Defensible Research, Temporal Bounding, and Adversarial Audit Standards.
+                Synthesize your FINAL complete deliverable adhering strictly to Defensible Research & Audit Standards:
+                1. IMMUTABLE TASK CONSTRAINTS BLOCK:
+                   Output an explicit, immutable constraints block at the very beginning of your deliverable:
+                   - Entity Category: (e.g. AI-agent startups only)
+                   - Funding Round: (e.g. Series B only, or as requested)
+                   - Funding Amount Threshold: (e.g. > $50M USD)
+                   - Announcement Window: (Exact start date through exact end date inclusive; NEVER widen or reinterpret)
+                   - Result Scope: (e.g. ALL qualifying companies, NOT a top-N subset)
+                   - Exclusions: (Acquisitions, rumors, hardware ASICs, non-agent tech)
+                   - Required Fields: (Company, Round, Disclosed Amount, Lead Investor, Announcement Date, Primary Source URL)
+
+                2. STRUCTURED VERIFICATION TABLE:
+                   | Status | Company | Round | Disclosed USD Amount | Lead Investor | Announcement Date | Primary Source Link |
+                   (List ONLY [QUALIFIED] candidates here. If 0 qualify in retrieved evidence, display "— None Qualified in Retrieved Evidence —")
+
+                3. EPISTEMIC TRI-STATE VERIFICATION & AUDIT LOG:
+                   Evaluate and classify EVERY discovered candidate entity into:
+                   - 🟢 [QUALIFIED] — Affirmatively satisfies 100% of immutable constraints with primary-source evidence.
+                   - 🔴 [REJECTED - <Exact Criterion Failed>] — Demonstrably fails at least one constraint (state exact reason: e.g. "Round Mismatch: Series C instead of Series B", "Date Out of Window: Announced August 4, 2026", "Excluded: Acquisition by Stripe").
+                   - 🟡 [UNVERIFIED - <Reason Incomplete>] — Surfaced in reporting, but retrieved evidence is insufficient/ambiguous to verify all mandatory fields.
+
+                4. EPISTEMIC HUMILITY ON ZERO RESULTS:
+                   - Distinguish "My retrieved evidence did not establish any qualifying companies" from an absolute claim that none exist.
+                   - State clearly: "In the retrieved live web evidence across multi-hop search passes, 0 candidates strictly verified as [QUALIFIED] across all constraints. Below is the audited breakdown of candidates discovered, rejected, and unverified."
+
+                5. ZERO CITATION LAUNDERING:
+                   - No fabricated metrics or unverified multipliers. All links must be real markdown links to retrieved URLs.
+
                 Output ONLY valid raw JSON with:
                 - "thought": (Your final verification audit summary)
                 - "action_type": "finish"
