@@ -53,14 +53,40 @@ Respond in valid JSON with:
 Output ONLY raw parseable JSON. No markdown code blocks.
 '''
 
+def parse_json_safely(text: str) -> Dict[str, Any]:
+    if not text:
+        return {}
+    clean = text.strip()
+    if clean.startswith('```json'):
+        clean = clean[7:]
+    if clean.startswith('```'):
+        clean = clean[3:]
+    if clean.endswith('```'):
+        clean = clean[:-3]
+    clean = clean.strip()
+    try:
+        return json.loads(clean, strict=False)
+    except Exception:
+        pass
+
+    try:
+        start = clean.find('{')
+        end = clean.rfind('}')
+        if start != -1 and end != -1:
+            return json.loads(clean[start:end+1], strict=False)
+    except Exception:
+        pass
+    return {}
+
 def execute_tool_call(tool_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
-    if tool_name == 'web_search':
+    normalized = tool_name.lower().replace(' ', '_').strip() if tool_name else ''
+    if 'search' in normalized or normalized == 'web_search':
         return execute_web_search(params.get('query', ''))
-    elif tool_name == 'email_sender':
+    elif 'email' in normalized or normalized == 'email_sender':
         return execute_email_sender(params.get('to', ''), params.get('subject', ''), params.get('body', ''))
-    elif tool_name == 'sheet_logger':
+    elif 'sheet' in normalized or normalized == 'sheet_logger':
         return execute_sheet_logger(params.get('table', 'general_records'), params.get('record', {}))
-    elif tool_name == 'slack_notifier':
+    elif 'slack' in normalized or normalized == 'slack_notifier':
         return execute_slack_notifier(params.get('channel', '#general'), params.get('message', ''))
     return {'error': f'Tool {tool_name} not recognized.'}
 
@@ -117,20 +143,13 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
     try:
         response = generate_content_with_retry(
             client=client,
-            model='gemini-3.6-flash',
+            model='gemini-3.5-flash',
             contents=[{'role': 'user', 'parts': [{'text': prompt}]}]
         )
 
         raw_text = response.text.strip()
         tokens_out += estimate_tokens(raw_text)
-
-        if raw_text.startswith('```json'):
-            raw_text = raw_text[7:]
-        if raw_text.startswith('```'):
-            raw_text = raw_text[3:]
-        if raw_text.endswith('```'):
-            raw_text = raw_text[:-3]
-        plan = json.loads(raw_text.strip())
+        plan = parse_json_safely(raw_text)
 
         thought = plan.get('thought', 'Analyzing request...')
         action_type = plan.get('action_type', 'finish')
@@ -191,12 +210,15 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
             6. PRIMARY EVIDENCE: Include markdown links to source URLs retrieved in the live search.
             7. STRATEGIC SYNTHESIS: Provide sharp, founder-ready takeaways and marketing copy grounded directly in the verified facts above.
 
-            Output ONLY valid raw JSON adhering to the schema (thought, action_type, tool_name, tool_params, final_response).
+            Output ONLY valid raw JSON with:
+            - "thought": (Your internal analysis of the findings and verification audit)
+            - "action_type": "finish"
+            - "final_response": (Your complete, exhaustive markdown deliverable for the founder adhering to all verification, provenance, and audit standards)
             '''
             tokens_in += estimate_tokens(followup_prompt)
             final_res = generate_content_with_retry(
                 client=client,
-                model='gemini-3.6-flash',
+                model='gemini-3.5-flash',
                 contents=[
                     {'role': 'user', 'parts': [{'text': prompt}]},
                     {'role': 'model', 'parts': [{'text': raw_text}]},
@@ -206,53 +228,81 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
 
             tokens_out += estimate_tokens(final_res.text)
             clean_text = final_res.text.strip()
-            if clean_text.startswith('```json'):
-                clean_text = clean_text[7:]
-            if clean_text.startswith('```'):
-                clean_text = clean_text[3:]
-            if clean_text.endswith('```'):
-                clean_text = clean_text[:-3]
+            step2_plan = parse_json_safely(clean_text)
+            step2_thought = step2_plan.get('thought', 'Synthesizing output...')
+            step2_action = step2_plan.get('action_type', 'finish')
+            step2_tool = step2_plan.get('tool_name')
+            step2_params = step2_plan.get('tool_params') or {}
 
-            try:
-                step2_plan = json.loads(clean_text.strip())
-                step2_thought = step2_plan.get('thought', 'Synthesizing output...')
-                step2_action = step2_plan.get('action_type', 'finish')
-                step2_tool = step2_plan.get('tool_name')
-                step2_params = step2_plan.get('tool_params') or {}
+            if step2_action == 'call_tool' and step2_tool in employee.requires_approval_for:
+                record.status = 'waiting_approval'
+                record.pending_action = {
+                    'tool_name': step2_tool,
+                    'tool_params': step2_params,
+                    'explanation': step2_thought
+                }
+                record.steps.append({
+                    'step_number': 2,
+                    'thought': step2_thought,
+                    'tool_called': step2_tool,
+                    'tool_input': step2_params,
+                    'tool_output': 'PAUSED: Awaiting Founder Approval'
+                })
+                record.tokens_used = tokens_in + tokens_out
+                record.cost_usd = calculate_task_cost(tokens_in, tokens_out, tools_called)
+                save_task(record)
+                return record
+            elif step2_action == 'call_tool' and step2_tool:
+                tools_called.append(step2_tool)
+                step2_out = execute_tool_call(step2_tool, step2_params)
+                record.steps.append({
+                    'step_number': 2,
+                    'thought': step2_thought,
+                    'tool_called': step2_tool,
+                    'tool_input': step2_params,
+                    'tool_output': step2_out
+                })
 
-                if step2_action == 'call_tool' and step2_tool in employee.requires_approval_for:
-                    record.status = 'waiting_approval'
-                    record.pending_action = {
-                        'tool_name': step2_tool,
-                        'tool_params': step2_params,
-                        'explanation': step2_thought
-                    }
-                    record.steps.append({
-                        'step_number': 2,
-                        'thought': step2_thought,
-                        'tool_called': step2_tool,
-                        'tool_input': step2_params,
-                        'tool_output': 'PAUSED: Awaiting Founder Approval'
-                    })
-                    record.tokens_used = tokens_in + tokens_out
-                    record.cost_usd = calculate_task_cost(tokens_in, tokens_out, tools_called)
-                    save_task(record)
-                    return record
-                elif step2_action == 'call_tool' and step2_tool:
-                    tools_called.append(step2_tool)
-                    step2_out = execute_tool_call(step2_tool, step2_params)
-                    record.steps.append({
-                        'step_number': 2,
-                        'thought': step2_thought,
-                        'tool_called': step2_tool,
-                        'tool_input': step2_params,
-                        'tool_output': step2_out
-                    })
-                    record.final_output = step2_plan.get('final_response') or f'Tool {step2_tool} executed successfully.'
-                else:
+                # Step 3: Multi-hop final synthesis from all collected evidence
+                final_prompt = f'''
+                Current Calendar Date: {current_date}
+
+                All Collected Evidence from Multi-Hop Research:
+                Round 1 Evidence:
+                {json.dumps(tool_output, indent=2)}
+
+                Round 2 Evidence:
+                {json.dumps(step2_out, indent=2)}
+
+                Synthesize your FINAL complete deliverable and executive summary for the founder.
+                Adhere strictly to all Defensible Research, Temporal Bounding, and Adversarial Audit Standards.
+                Output ONLY valid raw JSON with:
+                - "thought": (Your final verification audit summary)
+                - "action_type": "finish"
+                - "final_response": (Your complete, exhaustive markdown deliverable for the founder adhering to all verification, provenance, and audit standards)
+                '''
+                tokens_in += estimate_tokens(final_prompt)
+                try:
+                    step3_res = generate_content_with_retry(
+                        client=client,
+                        model='gemini-3.5-flash',
+                        contents=[
+                            {'role': 'user', 'parts': [{'text': prompt}]},
+                            {'role': 'model', 'parts': [{'text': raw_text}]},
+                            {'role': 'user', 'parts': [{'text': followup_prompt}]},
+                            {'role': 'model', 'parts': [{'text': clean_text}]},
+                            {'role': 'user', 'parts': [{'text': final_prompt}]}
+                        ]
+                    )
+                    tokens_out += estimate_tokens(step3_res.text)
+                    step3_text = step3_res.text.strip()
+                    step3_plan = parse_json_safely(step3_text)
+                    record.final_output = step3_plan.get('final_response') or step3_res.text
+                except Exception as e:
+                    logger.error(f"[Runner Step 3 Error] {e}", exc_info=True)
                     record.final_output = step2_plan.get('final_response') or final_res.text
-            except Exception:
-                record.final_output = final_res.text
+            else:
+                record.final_output = step2_plan.get('final_response') or final_res.text
         else:
             record.steps.append({
                 'step_number': 1,
@@ -262,6 +312,15 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
                 'tool_output': 'Direct synthesis completed'
             })
             record.final_output = plan.get('final_response', 'Task concluded successfully.')
+
+        # Unpack JSON if final_output is still a JSON string
+        if record.final_output and isinstance(record.final_output, str):
+            parsed = parse_json_safely(record.final_output)
+            if isinstance(parsed, dict) and parsed:
+                if parsed.get('final_response'):
+                    record.final_output = parsed['final_response']
+                elif parsed.get('thought') and parsed.get('action_type') != 'call_tool':
+                    record.final_output = parsed['thought']
 
         record.status = 'completed'
         record.tokens_used = tokens_in + tokens_out
