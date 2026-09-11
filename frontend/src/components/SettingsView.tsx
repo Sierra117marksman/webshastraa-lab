@@ -7,21 +7,26 @@ import {
   Zap,
   Check,
   ExternalLink,
-  ShieldAlert
+  ShieldAlert,
+  Server
 } from 'lucide-react';
 import { SettingsState } from '@/types';
 
 interface SettingsViewProps {
   settings: SettingsState;
   onSave: (payload: { tavily_api_key?: string; smtp_user?: string; smtp_pass?: string; blacklist_domains?: string }) => Promise<void>;
+  apiBase?: string;
+  onUpdateApiBase?: (url: string) => void;
 }
 
-export default function SettingsView({ settings, onSave }: SettingsViewProps) {
+export default function SettingsView({ settings, onSave, apiBase = 'http://127.0.0.1:8000', onUpdateApiBase }: SettingsViewProps) {
   const [tavilyKey, setTavilyKey] = useState('');
   const [smtpPass, setSmtpPass] = useState('');
   const [blacklistInput, setBlacklistInput] = useState(settings.blacklist_domains || 'investor.com,board.com,vip.com,internal.com');
+  const [endpointInput, setEndpointInput] = useState(apiBase);
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [endpointSaved, setEndpointSaved] = useState(false);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -42,6 +47,16 @@ export default function SettingsView({ settings, onSave }: SettingsViewProps) {
     setSmtpPass('');
   };
 
+  const handleSaveEndpoint = () => {
+    if (!endpointInput.trim()) return;
+    const cleanUrl = endpointInput.trim().replace(/\/+$/, '');
+    if (onUpdateApiBase) {
+      onUpdateApiBase(cleanUrl);
+    }
+    setEndpointSaved(true);
+    setTimeout(() => setEndpointSaved(false), 3000);
+  };
+
   return (
     <div id="tour-settings" className="space-y-8 max-w-4xl mx-auto">
       {/* Header */}
@@ -53,6 +68,57 @@ export default function SettingsView({ settings, onSave }: SettingsViewProps) {
       </div>
 
       <div className="grid grid-cols-1 gap-6">
+        {/* Backend Engine API Endpoint Card */}
+        <div className="rounded-2xl border border-violet-500/20 bg-[#0a0d14]/80 p-6 space-y-4 shadow-xl">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-violet-400 shrink-0">
+                <Server className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  Engine API Endpoint
+                </h3>
+                <p className="text-xs text-zinc-400">
+                  Target FastAPI backend (Render, Railway, Cloudflare tunnel, or local server)
+                </p>
+              </div>
+            </div>
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-violet-500/10 text-violet-300 border border-violet-500/30 self-start">
+              {apiBase}
+            </span>
+          </div>
+
+          <div className="space-y-3 pt-1">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                value={endpointInput}
+                onChange={(e) => setEndpointInput(e.target.value)}
+                placeholder="e.g. https://webshastraa-api.onrender.com or https://xxxx.trycloudflare.com"
+                className="flex-1 px-3 py-2 text-xs rounded-xl bg-black/40 border border-white/[0.08] text-white focus:outline-none focus:border-violet-500 font-mono"
+              />
+              <button
+                type="button"
+                onClick={handleSaveEndpoint}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-violet-600 hover:bg-violet-500 text-white transition cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+              >
+                {endpointSaved ? (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Saved!</span>
+                  </>
+                ) : (
+                  <span>Update Endpoint</span>
+                )}
+              </button>
+            </div>
+            <p className="text-[11px] text-zinc-500">
+              When accessing Webshastraa AI on mobile devices or outside your local network, enter your public backend URL or tunnel address here.
+            </p>
+          </div>
+        </div>
+
         {/* Gemini Engine Card */}
         <div className="rounded-2xl border border-white/[0.08] bg-[#0a0d14]/80 p-6 space-y-4 shadow-xl">
           <div className="flex items-start justify-between">

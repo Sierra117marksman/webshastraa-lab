@@ -75,7 +75,7 @@ export default function HireStudio({ onEmployeeHired, apiBase }: HireStudioProps
         alert('Compilation failed. Please check backend server.');
       }
     } catch {
-      alert('Error connecting to compiler backend.');
+      alert(`Error connecting to compiler backend (${apiBase}).\n\nIf you are accessing from a mobile device or outside localhost, please configure your public backend URL in Settings.`);
     } finally {
       clearInterval(stepInterval);
       setIsCompiling(false);

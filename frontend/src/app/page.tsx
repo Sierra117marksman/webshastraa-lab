@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Menu, Compass } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import HireStudio from '@/components/HireStudio';
@@ -11,7 +11,7 @@ import RoiTelemetry from '@/components/RoiTelemetry';
 import CoachMarkTour from '@/components/CoachMarkTour';
 import { AIEmployeeSpec, TaskRecord, SettingsState, AnalyticsData } from '@/types';
 
-const API_BASE = 'http://127.0.0.1:8000';
+const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://127.0.0.1:8000';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<'hire' | 'roster' | 'feed' | 'settings'>('roster');
@@ -20,6 +20,8 @@ export default function Home() {
   const [dispatchingId, setDispatchingId] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isTourOpen, setIsTourOpen] = useState(false);
+  const [apiBase, setApiBase] = useState<string>(DEFAULT_API_BASE);
+  const [isBackendOnline, setIsBackendOnline] = useState<boolean>(true);
 
   const [analytics, setAnalytics] = useState<AnalyticsData>({
     total_tasks: 0,
@@ -41,22 +43,34 @@ export default function Home() {
     blacklist_domains: 'investor.com,board.com,vip.com,internal.com'
   });
 
-  const fetchData = async () => {
+  useEffect(() => {
+    const saved = localStorage.getItem('webshastraa_api_base');
+    if (saved) {
+      setTimeout(() => {
+        setApiBase(saved);
+      }, 0);
+    }
+  }, []);
+
+  const fetchData = useCallback(async (targetBase?: string) => {
+    const base = targetBase || apiBase;
     try {
       const [empRes, taskRes, setRes, anaRes] = await Promise.all([
-        fetch(`${API_BASE}/api/employees`),
-        fetch(`${API_BASE}/api/tasks`),
-        fetch(`${API_BASE}/api/settings`),
-        fetch(`${API_BASE}/api/analytics`)
+        fetch(`${base}/api/employees`),
+        fetch(`${base}/api/tasks`),
+        fetch(`${base}/api/settings`),
+        fetch(`${base}/api/analytics`)
       ]);
       if (empRes.ok) setEmployees(await empRes.json());
       if (taskRes.ok) setTasks(await taskRes.json());
       if (setRes.ok) setSettings(await setRes.json());
       if (anaRes.ok) setAnalytics(await anaRes.json());
+      setIsBackendOnline(true);
     } catch (err) {
       console.error('Failed to sync state:', err);
+      setIsBackendOnline(false);
     }
-  };
+  }, [apiBase]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -81,12 +95,18 @@ export default function Home() {
       clearInterval(interval);
       if (tourTimer) clearTimeout(tourTimer);
     };
-  }, []);
+  }, [fetchData]);
+
+  const handleUpdateApiBase = (newBase: string) => {
+    setApiBase(newBase);
+    localStorage.setItem('webshastraa_api_base', newBase);
+    fetchData(newBase);
+  };
 
   const handleDispatch = async (employeeId: string, customPrompt?: string) => {
     setDispatchingId(employeeId);
     try {
-      const res = await fetch(`${API_BASE}/api/employees/${employeeId}/dispatch`, {
+      const res = await fetch(`${apiBase}/api/employees/${employeeId}/dispatch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ task_prompt: customPrompt || undefined })
@@ -96,7 +116,7 @@ export default function Home() {
         setActiveTab('feed');
       }
     } catch {
-      alert('Failed to dispatch task.');
+      alert(`Failed to dispatch task. Please verify backend is running at ${apiBase}`);
     } finally {
       setDispatchingId(null);
     }
@@ -104,13 +124,13 @@ export default function Home() {
 
   const handleDelete = async (employeeId: string) => {
     if (!confirm('Are you sure you want to dismiss this AI employee from your company?')) return;
-    await fetch(`${API_BASE}/api/employees/${employeeId}`, { method: 'DELETE' });
+    await fetch(`${apiBase}/api/employees/${employeeId}`, { method: 'DELETE' });
     fetchData();
   };
 
   const handleApprove = async (taskId: string, approved: boolean) => {
     try {
-      const res = await fetch(`${API_BASE}/api/tasks/${taskId}/approve`, {
+      const res = await fetch(`${apiBase}/api/tasks/${taskId}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ approved })
@@ -125,7 +145,7 @@ export default function Home() {
 
   const handleSaveSettings = async (payload: { tavily_api_key?: string; smtp_user?: string; smtp_pass?: string; blacklist_domains?: string }) => {
     try {
-      const res = await fetch(`${API_BASE}/api/settings`, {
+      const res = await fetch(`${apiBase}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -217,13 +237,32 @@ export default function Home() {
           </button>
         </header>
 
+        {/* Backend Connection Alert Banner */}
+        {!isBackendOnline && (
+          <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 sm:px-8 py-2.5 text-xs text-amber-300 flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+              <span>
+                <strong>Backend Disconnected:</strong> Cannot reach <code>{apiBase}</code>. If on mobile, configure your public endpoint in Settings.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('settings')}
+              className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/30 font-semibold cursor-pointer transition text-[11px] shrink-0"
+            >
+              Configure Endpoint &rarr;
+            </button>
+          </div>
+        )}
+
         <main className="flex-1 p-4 sm:p-6 md:p-10 max-w-7xl w-full mx-auto">
           {/* Executive Telemetry & Value Creation Strip */}
           <RoiTelemetry analytics={analytics} />
 
           {activeTab === 'hire' && (
             <HireStudio
-              apiBase={API_BASE}
+              apiBase={apiBase}
               onEmployeeHired={(newEmp) => {
                 setEmployees((prev) => [newEmp, ...prev]);
                 setActiveTab('roster');
@@ -252,6 +291,8 @@ export default function Home() {
             <SettingsView
               settings={settings}
               onSave={handleSaveSettings}
+              apiBase={apiBase}
+              onUpdateApiBase={handleUpdateApiBase}
             />
           )}
         </main>
