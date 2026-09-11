@@ -42,6 +42,7 @@ app.add_middleware(
 
 class SettingsUpdate(BaseModel):
     tavily_api_key: Optional[str] = None
+    groq_api_key: Optional[str] = None
     smtp_user: Optional[str] = None
     smtp_pass: Optional[str] = None
     blacklist_domains: Optional[str] = None
@@ -83,6 +84,7 @@ def get_analytics():
 
 @app.get('/api/settings')
 def get_settings():
+    groq_key = os.getenv('GROQ_API_KEY', '')
     tavily_key = os.getenv('TAVILY_API_KEY', '')
     smtp_user = os.getenv('SMTP_USER', 'webshastraa@gmail.com')
     smtp_pass = os.getenv('SMTP_PASS', '')
@@ -92,6 +94,8 @@ def get_settings():
     active_sender = smtp_user if smtp_pass.strip() else (backup_user if backup_user else smtp_user)
     
     return {
+        'groq_connected': bool(groq_key.strip()),
+        'groq_key_preview': f'{groq_key[:6]}...{groq_key[-4:]}' if groq_key else '',
         'gemini_connected': bool(os.getenv('GEMINI_API_KEY')),
         'tavily_connected': bool(tavily_key.strip()),
         'tavily_key_preview': f'{tavily_key[:6]}...' if tavily_key else '',
@@ -104,6 +108,8 @@ def get_settings():
 
 @app.post('/api/settings')
 def update_settings(req: SettingsUpdate):
+    if req.groq_api_key is not None:
+        os.environ['GROQ_API_KEY'] = req.groq_api_key.strip()
     if req.tavily_api_key is not None:
         os.environ['TAVILY_API_KEY'] = req.tavily_api_key.strip()
     if req.smtp_user is not None:

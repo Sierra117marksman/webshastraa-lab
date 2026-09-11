@@ -8,19 +8,21 @@ import {
   Check,
   ExternalLink,
   ShieldAlert,
-  Server
+  Server,
+  Cpu
 } from 'lucide-react';
 import { SettingsState } from '@/types';
 
 interface SettingsViewProps {
   settings: SettingsState;
-  onSave: (payload: { tavily_api_key?: string; smtp_user?: string; smtp_pass?: string; blacklist_domains?: string }) => Promise<void>;
+  onSave: (payload: { tavily_api_key?: string; groq_api_key?: string; smtp_user?: string; smtp_pass?: string; blacklist_domains?: string }) => Promise<void>;
   apiBase?: string;
   onUpdateApiBase?: (url: string) => void;
 }
 
 export default function SettingsView({ settings, onSave, apiBase = 'http://127.0.0.1:8000', onUpdateApiBase }: SettingsViewProps) {
   const [tavilyKey, setTavilyKey] = useState('');
+  const [groqKey, setGroqKey] = useState('');
   const [smtpPass, setSmtpPass] = useState('');
   const [blacklistInput, setBlacklistInput] = useState(settings.blacklist_domains || 'investor.com,board.com,vip.com,internal.com');
   const [endpointInput, setEndpointInput] = useState(apiBase);
@@ -30,8 +32,9 @@ export default function SettingsView({ settings, onSave, apiBase = 'http://127.0
 
   const handleSave = async () => {
     setIsSaving(true);
-    const payload: { tavily_api_key?: string; smtp_user?: string; smtp_pass?: string; blacklist_domains?: string } = {};
+    const payload: { tavily_api_key?: string; groq_api_key?: string; smtp_user?: string; smtp_pass?: string; blacklist_domains?: string } = {};
     if (tavilyKey.trim()) payload.tavily_api_key = tavilyKey.trim();
+    if (groqKey.trim()) payload.groq_api_key = groqKey.trim();
     if (smtpPass.trim()) {
       payload.smtp_user = 'webshastraa@gmail.com';
       payload.smtp_pass = smtpPass.trim();
@@ -44,6 +47,7 @@ export default function SettingsView({ settings, onSave, apiBase = 'http://127.0
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 3000);
     setTavilyKey('');
+    setGroqKey('');
     setSmtpPass('');
   };
 
@@ -116,6 +120,65 @@ export default function SettingsView({ settings, onSave, apiBase = 'http://127.0
             <p className="text-[11px] text-zinc-500">
               When accessing Webshastraa AI on mobile devices or outside your local network, enter your public backend URL or tunnel address here.
             </p>
+          </div>
+        </div>
+
+        {/* Groq High-Speed LPU Card */}
+        <div className="rounded-2xl border border-amber-500/20 bg-[#0a0d14]/80 p-6 space-y-4 shadow-xl">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                <Cpu className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  Groq High-Speed LPU Engine
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono">0.5s Latency</span>
+                </h3>
+                <p className="text-xs text-zinc-400">Ultra-fast inference (14,400 daily requests) with automatic Gemini fallback</p>
+              </div>
+            </div>
+            <span
+              className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${
+                settings.groq_connected
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                  : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${settings.groq_connected ? 'bg-emerald-400' : 'bg-zinc-500'}`} />
+              {settings.groq_connected ? 'Active & High-Speed' : 'Not Configured'}
+            </span>
+          </div>
+
+          <div className="rounded-xl bg-black/30 p-4 border border-white/[0.04] text-xs space-y-3">
+            <div className="flex items-center justify-between text-zinc-300">
+              <span>Active Groq Key:</span>
+              <span className="font-mono text-amber-400 font-bold">
+                {settings.groq_connected ? `Verified (${settings.groq_key_preview || 'gsk_...'})` : 'None (Using Gemini)'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-zinc-400 text-[11px] pt-2 border-t border-white/[0.06]">
+              <span>Get your free Groq API key (instant setup)</span>
+              <a
+                href="https://console.groq.com/keys"
+                target="_blank"
+                rel="noreferrer"
+                className="text-amber-400 hover:text-amber-300 flex items-center gap-1 font-medium transition"
+              >
+                console.groq.com <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          </div>
+
+          <div className="space-y-1.5 pt-1">
+            <label className="text-xs font-semibold text-zinc-300">Update Groq API Key</label>
+            <input
+              type="password"
+              value={groqKey}
+              onChange={(e) => setGroqKey(e.target.value)}
+              placeholder="gsk_..."
+              className="w-full px-3 py-2 text-xs rounded-xl bg-black/40 border border-white/[0.08] text-white focus:outline-none focus:border-amber-500 font-mono"
+            />
           </div>
         </div>
 

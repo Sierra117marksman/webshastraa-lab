@@ -7,6 +7,53 @@ from google import genai
 logger = logging.getLogger(__name__)
 
 FALLBACK_MODELS = ['gemini-3.5-flash', 'gemini-flash-latest', 'gemini-3.5-flash-lite', 'gemini-3.7-flash', 'gemini-3.6-flash']
+GROQ_MODELS = ['groq/compound', 'groq/compound-mini', 'qwen/qwen3.8-27b']
+
+class LLMResponse:
+    def __init__(self, text: str):
+        self.text = text
+
+def _try_groq_inference(contents: List[Dict[str, Any]]) -> Optional[LLMResponse]:
+    groq_api_key = os.getenv('GROQ_API_KEY')
+    if not groq_api_key:
+        return None
+
+    try:
+        from groq import Groq
+        groq_client = Groq(api_key=groq_api_key)
+
+        # Convert Gemini contents format to OpenAI/Groq message list
+        messages = []
+        for turn in contents:
+            role = 'assistant' if turn.get('role') == 'model' else 'user'
+            text = ''
+            for part in turn.get('parts', []):
+                text += part.get('text', '')
+            if text:
+                messages.append({'role': role, 'content': text})
+
+        if not messages:
+            return None
+
+        for model in GROQ_MODELS:
+            try:
+                t0 = time.time()
+                res = groq_client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    temperature=0.2
+                )
+                output = res.choices[0].message.content or ''
+                elapsed = time.time() - t0
+                logger.info(f"[Groq LPU] Finished in {elapsed:.2f}s via {model} (Length: {len(output)})")
+                return LLMResponse(output)
+            except Exception as ge:
+                logger.warning(f"[Groq Error] Model {model} failed ({str(ge)[:90]}). Trying next...")
+                continue
+    except Exception as e:
+        logger.warning(f"[Groq Init Error] {e}")
+
+    return None
 
 def generate_content_with_retry(
     client: genai.Client,
@@ -16,9 +63,17 @@ def generate_content_with_retry(
     initial_delay: float = 1.5
 ) -> Any:
     """
-    Executes Gemini content generation with multi-model failover and backoff.
-    If a model hits 429 RESOURCE_EXHAUSTED, it immediately cascades to alternative high-quota models.
+    Executes LLM content generation with multi-provider failover:
+    1. Primary: Groq LPU (Ultra-fast, high request limits)
+    2. Fallback: Google Gemini cascade across 5 production models
     """
+    # 1. Attempt Groq first if key is present
+    groq_res = _try_groq_inference(contents)
+    if groq_res is not None and groq_res.text:
+        return groq_res
+
+    # 2. Fallback to Gemini Cascade
+    logger.info("[LLM Engine] Running via Google Gemini cascade...")
     models_to_try = [model] + [m for m in FALLBACK_MODELS if m != model]
     last_error = None
 
@@ -48,3 +103,4 @@ def generate_content_with_retry(
                     break
 
     raise last_error
+

@@ -143,7 +143,7 @@ export default function Home() {
     }
   };
 
-  const handleSaveSettings = async (payload: { tavily_api_key?: string; smtp_user?: string; smtp_pass?: string; blacklist_domains?: string }) => {
+  const handleSaveSettings = async (payload: { tavily_api_key?: string; groq_api_key?: string; smtp_user?: string; smtp_pass?: string; blacklist_domains?: string }) => {
     try {
       const res = await fetch(`${apiBase}/api/settings`, {
         method: 'POST',

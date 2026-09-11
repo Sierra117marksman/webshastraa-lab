@@ -46,6 +46,8 @@ export interface TaskRecord {
 }
 
 export interface SettingsState {
+  groq_connected?: boolean;
+  groq_key_preview?: string;
   gemini_connected: boolean;
   tavily_connected: boolean;
   tavily_key_preview: string;
