@@ -1,0 +1,27 @@
+﻿# Virtual Environments
+.venv/
+venv/
+ENV/
+
+# Secrets
+.env
+.env.local
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.class
+*.sqlite3
+*.db
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+build/
+dist/
+
+# Logs
+*.log
