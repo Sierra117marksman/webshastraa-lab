@@ -11,7 +11,7 @@ import RoiTelemetry from '@/components/RoiTelemetry';
 import CoachMarkTour from '@/components/CoachMarkTour';
 import { AIEmployeeSpec, TaskRecord, SettingsState, AnalyticsData } from '@/types';
 
-const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://127.0.0.1:8000';
+const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'https://webshastraa-lab.onrender.com';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<'hire' | 'roster' | 'feed' | 'settings'>('roster');

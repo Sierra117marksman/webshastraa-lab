@@ -50,6 +50,16 @@ class SettingsUpdate(BaseModel):
 def on_startup():
     init_db()
 
+@app.get('/')
+def root():
+    return {
+        'status': 'online',
+        'service': 'Webshastraa AI - Autonomous Employee Engine',
+        'version': '1.0.0',
+        'health': '/health',
+        'docs': '/docs'
+    }
+
 @app.get('/health')
 def health():
     return {'status': 'online', 'service': 'ai-employee-engine'}
