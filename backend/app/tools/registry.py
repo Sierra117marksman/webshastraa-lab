@@ -45,10 +45,10 @@ def execute_web_search(query: str) -> Dict[str, Any]:
         try:
             from tavily import TavilyClient
             client = TavilyClient(api_key=tavily_key.strip())
-            data = client.search(query=query, max_results=4, search_depth='advanced')
+            data = client.search(query=query, max_results=8, search_depth='advanced', include_answer=True)
             results = [{'title': r.get('title'), 'url': r.get('url'), 'content': r.get('content')} for r in data.get('results', [])]
-            return {'status': 'success', 'source': 'tavily_live_search', 'results': results}
-        except Exception as e:
+            return {'status': 'success', 'source': 'tavily_live_search', 'direct_answer': data.get('answer'), 'results': results}
+        except Exception:
             pass
 
     # High-quality fallback search simulator

@@ -32,10 +32,15 @@ Current Task:
 {task_prompt}
 
 CRITICAL RESEARCH & VERIFICATION MANDATE:
-1. TEMPORAL BOUNDING: Today is {current_date}. If the user prompt requests events from a relative timeframe (e.g., 'last month', 'recent', 'this week'), explicitly calculate the exact date window relative to {current_date} (e.g., 'Target Window: [Date - 30 days] to {current_date}').
+1. TEMPORAL BOUNDING: Today is {current_date}. If the user prompt requests events from a relative timeframe (e.g., 'last month', 'recent', 'this week') or specific date window (e.g., 'between August 15 and September 10, 2026'), strictly compute and adhere to that exact window. Do NOT include older companies or earlier funding rounds simply because they are famous.
 2. ZERO CITATION LAUNDERING: Never invent or assert specific quantitative statistics (e.g. '3.4x faster', '65% cycle time reduction') without an explicit named company case study, whitepaper, or primary source URL. If an observation is conceptual or qualitative, state it as a strategic thesis, not an empirical benchmark.
 3. ENTITY PROVENANCE: When citing funding rounds, valuations, or company milestones, establish the complete verification chain: Company -> Funding Event -> Announcement Date -> Disclosed Amount -> Valuation -> Primary Source Link.
-4. METHODOLOGICAL TRANSPARENCY: When asked for a ranking (e.g., 'top 3'), explicitly state your ranking methodology (e.g., 'Ranked by highest disclosed funding amount in USD within the target date window').
+4. ADVERSARIAL AUDIT & REJECTION PROTOCOL:
+   - When asked to audit claims or find companies meeting strict criteria:
+   - State the exact evidence for every verified claim.
+   - Explicitly list unsupported or out-of-window candidates as REJECTED with the exact reason (e.g., 'REJECTED: Sierra - round announced May 2026, outside target window').
+   - If fewer than the requested number qualify, return ONLY the qualified ones. Never substitute or hallucinate older companies to fill a quota!
+5. METHODOLOGICAL TRANSPARENCY: When asked for a ranking (e.g., 'top 3', '5 largest'), explicitly state your ranking methodology (e.g., 'Ranked strictly by highest disclosed funding amount in USD in descending order; acquisitions excluded').
 
 Analyze the task and determine the best action.
 Respond in valid JSON with:
@@ -172,14 +177,19 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
             Raw Tool Results / Live Web Intel:
             {json.dumps(tool_output, indent=2)}
 
-            Synthesize your final deliverable adhering strictly to Defensible Research Standards:
-            1. TEMPORAL ACCURACY: Verify that every mentioned company, event, or funding round matches the requested timeframe relative to {current_date}. Explicitly list the actual announcement date (e.g. Month Day, Year).
-            2. STRUCTURED VERIFICATION TABLE: For market, funding, or competitor intelligence, include a structured table:
-               | Rank | Company | Round | Amount Disclosed | Announcement Date | Primary Source Link |
-            3. RANKING CRITERIA: State clearly how items were ranked (e.g. "Ranked by disclosed funding round size in USD within the target date window").
-            4. ANTI-HALLUCINATION: Do NOT invent unverified percentages (e.g. "65% cycle time") or multipliers (e.g. "3.4x") without a named company report or study. If sharing an observational takeaway, label it clearly as an executive insight.
-            5. PRIMARY EVIDENCE: Include markdown links to source URLs retrieved in the live search.
-            6. STRATEGIC SYNTHESIS: Provide sharp, founder-ready takeaways and marketing copy grounded directly in the verified facts above.
+            Synthesize your final deliverable adhering strictly to Defensible Research & Audit Standards:
+            1. TEMPORAL ACCURACY: Verify that every mentioned company, event, or funding round strictly falls inside the requested timeframe relative to {current_date}. Explicitly list the actual announcement date (e.g. Month Day, Year).
+            2. STRUCTURED VERIFICATION TABLE:
+               | Rank | Company | Round | Disclosed USD Amount | Announcement Date | Primary Source Link |
+            3. RANKING METHODOLOGY: Declare the explicit ranking metric (e.g. "Ranked strictly by disclosed USD amount in descending order; acquisitions excluded").
+            4. FACTUAL CLAIM AUDIT (CRITICAL):
+               If the task requires auditing, date bounding, or strict verification, provide a dedicated "Factual Claim Audit":
+               - State each candidate entity and the exact primary source evidence supporting it.
+               - Explicitly mark disqualified/unsupported claims or entities as [REJECTED] with the reason (e.g. "REJECTED: Sierra - announced May 2026, outside August 15 - September 10 window").
+               - If fewer qualify than requested, return fewer. Never substitute older prominent companies to fill the quota.
+            5. ZERO UNSOURCED METRICS: Do not invent unverified percentages (e.g. "65% cycle time") or multipliers (e.g. "3.4x") without a named company report or study. If sharing an observational takeaway, label it clearly as an executive insight.
+            6. PRIMARY EVIDENCE: Include markdown links to source URLs retrieved in the live search.
+            7. STRATEGIC SYNTHESIS: Provide sharp, founder-ready takeaways and marketing copy grounded directly in the verified facts above.
 
             Output ONLY valid raw JSON adhering to the schema (thought, action_type, tool_name, tool_params, final_response).
             '''
