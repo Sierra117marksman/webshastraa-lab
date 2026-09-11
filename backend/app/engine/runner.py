@@ -18,6 +18,7 @@ from app.engine.gemini_client import generate_content_with_retry
 
 RUNNER_PROMPT_TEMPLATE = '''
 You are {name}, working as an autonomous {role} in the {department} department.
+Current Calendar Date: {current_date}
 Your Core Mission: {objective}
 Your Behavioral Persona: {persona}
 
@@ -30,13 +31,19 @@ Available Tools:
 Current Task:
 {task_prompt}
 
+CRITICAL RESEARCH & VERIFICATION MANDATE:
+1. TEMPORAL BOUNDING: Today is {current_date}. If the user prompt requests events from a relative timeframe (e.g., 'last month', 'recent', 'this week'), explicitly calculate the exact date window relative to {current_date} (e.g., 'Target Window: [Date - 30 days] to {current_date}').
+2. ZERO CITATION LAUNDERING: Never invent or assert specific quantitative statistics (e.g. '3.4x faster', '65% cycle time reduction') without an explicit named company case study, whitepaper, or primary source URL. If an observation is conceptual or qualitative, state it as a strategic thesis, not an empirical benchmark.
+3. ENTITY PROVENANCE: When citing funding rounds, valuations, or company milestones, establish the complete verification chain: Company -> Funding Event -> Announcement Date -> Disclosed Amount -> Valuation -> Primary Source Link.
+4. METHODOLOGICAL TRANSPARENCY: When asked for a ranking (e.g., 'top 3'), explicitly state your ranking methodology (e.g., 'Ranked by highest disclosed funding amount in USD within the target date window').
+
 Analyze the task and determine the best action.
 Respond in valid JSON with:
-- "thought": (Your internal reasoning about what to do next based on your SOPs)
+- "thought": (Your internal reasoning about what to do next based on your SOPs and verification standards)
 - "action_type": ("call_tool" or "finish")
 - "tool_name": (Name of tool to call, or null if finishing)
 - "tool_params": (Dictionary of tool parameters, or null)
-- "final_response": (If finishing, provide your complete detailed briefing / deliverables for the founder)
+- "final_response": (If finishing, provide your complete detailed briefing / deliverables for the founder adhering to verification standards)
 
 Output ONLY raw parseable JSON. No markdown code blocks.
 '''
@@ -85,8 +92,10 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
     sops_formatted = '\n'.join(f'- {s}' for s in employee.sops)
     tools_formatted = json.dumps([t for t in TOOLS_METADATA if t['id'] in employee.tools], indent=2)
 
+    current_date = datetime.now().strftime('%B %d, %Y')
     prompt = RUNNER_PROMPT_TEMPLATE.format(
         name=employee.name,
+        current_date=current_date,
         role=employee.role,
         department=employee.department,
         objective=employee.objective,
@@ -110,11 +119,11 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
         raw_text = response.text.strip()
         tokens_out += estimate_tokens(raw_text)
 
-        if raw_text.startswith('`json'):
+        if raw_text.startswith('```json'):
             raw_text = raw_text[7:]
-        if raw_text.startswith('`'):
+        if raw_text.startswith('```'):
             raw_text = raw_text[3:]
-        if raw_text.endswith('`'):
+        if raw_text.endswith('```'):
             raw_text = raw_text[:-3]
         plan = json.loads(raw_text.strip())
 
@@ -156,13 +165,23 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
                 'tool_output': tool_output
             })
 
-            # Secondary pass to synthesize final output or execute next tool with intelligence
+            # Secondary pass to synthesize final output adhering to verification standards
             followup_prompt = f'''
-            Based on the tool results:
+            Current Calendar Date: {current_date}
+
+            Raw Tool Results / Live Web Intel:
             {json.dumps(tool_output, indent=2)}
 
-            Provide your final complete deliverable and executive summary for the founder, or call the next tool if required by your SOPs.
-            Output ONLY valid raw JSON adhering to the same schema (thought, action_type, tool_name, tool_params, final_response).
+            Synthesize your final deliverable adhering strictly to Defensible Research Standards:
+            1. TEMPORAL ACCURACY: Verify that every mentioned company, event, or funding round matches the requested timeframe relative to {current_date}. Explicitly list the actual announcement date (e.g. Month Day, Year).
+            2. STRUCTURED VERIFICATION TABLE: For market, funding, or competitor intelligence, include a structured table:
+               | Rank | Company | Round | Amount Disclosed | Announcement Date | Primary Source Link |
+            3. RANKING CRITERIA: State clearly how items were ranked (e.g. "Ranked by disclosed funding round size in USD within the target date window").
+            4. ANTI-HALLUCINATION: Do NOT invent unverified percentages (e.g. "65% cycle time") or multipliers (e.g. "3.4x") without a named company report or study. If sharing an observational takeaway, label it clearly as an executive insight.
+            5. PRIMARY EVIDENCE: Include markdown links to source URLs retrieved in the live search.
+            6. STRATEGIC SYNTHESIS: Provide sharp, founder-ready takeaways and marketing copy grounded directly in the verified facts above.
+
+            Output ONLY valid raw JSON adhering to the schema (thought, action_type, tool_name, tool_params, final_response).
             '''
             tokens_in += estimate_tokens(followup_prompt)
             final_res = generate_content_with_retry(
