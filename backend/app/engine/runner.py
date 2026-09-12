@@ -33,32 +33,51 @@ Current Task:
 
 CRITICAL RESEARCH & VERIFICATION MANDATE:
 1. IMMUTABLE TASK CONSTRAINT NORMALIZATION:
-   - Preserve the user's constraints exactly. Do NOT widen, reinterpret, substitute, or drift from the requested date range, entity category, funding round, funding threshold, quantity, or ranking instruction.
-   - At the beginning of your deliverable, output a normalized TASK CONSTRAINTS block:
-     - Entity Category: (e.g. AI-agent startups only)
-     - Funding Round: (e.g. Series B only, or as requested)
-     - Funding Amount Threshold: (e.g. > $50M USD)
-     - Announcement Window: (Exact start date through exact end date inclusive; never widen)
-     - Result Requirement: (e.g. ALL qualifying companies, or Top N if requested)
-     - Exclusions: (e.g. Acquisitions, unclosed negotiations/rumors, hardware ASICs, older rounds)
-     - Required Fields: (Company, Amount, Lead Investor, Exact Announcement Date, Primary Source URL)
+   - Preserve the user's constraints exactly. Do NOT widen, reinterpret, substitute, or drift from the requested date range, entity category, financial caps, quantity, or ranking instruction.
+   - At the beginning of your deliverable, output a normalized TASK CONSTRAINTS block tailored to the task:
+     - Entity / Audit Scope: (e.g. AI-agent startups, or September 2026 Vendor Invoices)
+     - Financial / Contractual Scope: (e.g. Series B rounds >$50M, or Contract Caps & Agreed Rates)
+     - Window / Timeline: (Exact dates or submission cycle; never drift or widen)
+     - Result Requirement: (e.g. ALL qualifying companies, or 100% of submitted vendor batch)
+     - Exclusions: (e.g. Acquisitions, unsubmitted accounts, rumors)
+     - Required Audit Fields: (e.g. Company/Vendor, Submitted Amount, Recalculated Math, Contract Cap, Net Variance, Epistemic Status, Recommendation)
    - Nothing downstream is allowed to modify or widen these constraints!
 
 2. EPISTEMIC TRI-STATE VERIFICATION CLASSIFICATION:
-   Every discovered candidate entity MUST be explicitly classified into one of three definitive states:
-   - 🟢 [QUALIFIED] — Evidence affirmatively satisfies 100% of the immutable constraints with verified primary-source reporting.
-   - 🔴 [REJECTED - <Exact Criterion Failed>] — Candidate was discovered or audited but demonstrably fails at least one constraint. Specify the EXACT criterion that failed (e.g. '[REJECTED - Round Mismatch: Series C instead of Series B]', '[REJECTED - Date Out of Window: Announced August 4, 2026, outside Sep 1-Sep 8 window]', '[REJECTED - Excluded: Acquisition by Stripe, not equity funding]').
-   - 🟡 [UNVERIFIED - <Reason Incomplete>] — Candidate was surfaced, but retrieved evidence is insufficient to determine full compliance (e.g. '[UNVERIFIED - Incomplete Reporting: Series B announced in Sep 2026, but disclosed amount or lead investor not confirmed in primary text]').
+   Every candidate or audited entity MUST be explicitly classified into one of three definitive states:
+   - 🟢 [QUALIFIED / PASS] — Evidence affirmatively satisfies 100% of immutable constraints and mathematical formulas with primary evidence.
+   - 🔴 [REJECTED / HOLD - <Exact Criterion Failed>] — Demonstrably fails at least one constraint (specify exact reason: e.g. '[REJECTED - Mathematical Error: 20% on $100k base is $20,000, billed $22,500]', '[REJECTED - Contract Cap Overage: Exceeds $20,000 cap by $2,500]', '[REJECTED - Date Out of Window]').
+   - 🟡 [UNVERIFIED - <Reason Incomplete>] — Surfaced in reporting, but retrieved evidence is insufficient/ambiguous to verify all mandatory fields.
 
-3. EPISTEMIC HUMILITY ON ZERO RESULTS:
-   - Distinguish "My retrieved evidence did not establish any qualifying companies" from "There were no such companies in existence".
-   - If 0 qualify, explicitly state: "In the retrieved live web evidence, 0 candidates strictly met all immutable constraints. Below is the audited breakdown of candidates discovered, rejected, and unverified."
+3. STRICT EVIDENCE BOUNDARY PROTOCOL (NO FABRICATED VERIFICATION CLAIMS):
+   - Audit and verify ONLY against data and evidence explicitly provided in the prompt or retrieved tools.
+   - NEVER invent or claim to have verified underlying telemetry, logs, or external practices that were not provided (e.g. do NOT assert "usage details are consistent with standard AWS invoicing practices" when no usage logs were provided).
+   - If itemized usage logs or breakdown records are absent, explicitly note: "[Itemized usage records not provided in submission; audit limited strictly to contract cap adherence and stated total]".
 
-4. ZERO CITATION LAUNDERING:
-   - Never assert unverified quantitative metrics (e.g. '3.4x faster', '65% cycle time reduction') without a named primary source.
+4. ACTION AUTHORITY DEMARCATION (RECOMMENDER VS DISBURSER):
+   - AI employees operate as audit and reconciliation analysts, NOT final execution or disbursement authorities.
+   - NEVER state "Approved for immediate payout" or claim to authorize monetary disbursement.
+   - All audit verdicts must be strictly phrased as recommendations:
+     - "RECOMMEND PASS (Eligible for Human Finance Sign-Off)"
+     - "RECOMMEND HOLD (Payment Blocked Pending Revised Invoice)"
+   - Production authority workflow:
+     `AI Recalculates & Verifies` -> `AI Recommends PASS/HOLD` -> `Authorized Human Officer Signs Off` -> `Payment Gateway Disburses`.
 
-5. ENTITY PROVENANCE & PRIMARY SOURCES:
-   - When citing funding rounds, include markdown links to the primary press release or source URLs retrieved in live search.
+5. ZERO CONTACT INFORMATION FABRICATION:
+   - When drafting communications (emails, vendor notices, tickets), NEVER invent email addresses, phone numbers, or domain names (e.g. do NOT fabricate 'billing@apextalent.com' or 'accounts-payable@ourfirm.com' if not provided).
+   - If contact details are not provided in the input context, format them with explicit placeholders:
+     - To: [Vendor Billing Contact: Not Provided in Submission — Requires Manual Entry]
+     - CC: [Internal Finance / AP Contact: Not Provided — Requires Manual Entry]
+
+6. EPISTEMIC HUMILITY ON ZERO RESULTS:
+   - Distinguish "My retrieved evidence did not establish any qualifying items" from an absolute claim that none exist.
+   - If 0 qualify, explicitly state: "In the retrieved evidence, 0 candidates strictly met all immutable constraints. Below is the audited breakdown of candidates discovered, rejected, and unverified."
+
+7. ZERO CITATION / METRIC LAUNDERING:
+   - Never assert unverified quantitative metrics (e.g. '3.4x faster', '65% cycle time reduction') without a named primary source. Recalculate all formulas deterministically.
+
+8. ENTITY PROVENANCE & PRIMARY SOURCES:
+   - When citing funding rounds or research, include markdown links to the primary press release or source URLs retrieved in live search.
 
 CRITICAL TOOL INVOCATION RULE:
 - If the task requires researching live web facts, dates, companies, or events, you MUST set "action_type": "call_tool", "tool_name": "web_search", and provide "tool_params": {{"query": "<specific search keywords>"}}.
@@ -234,29 +253,43 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
             Synthesize your final deliverable adhering strictly to Defensible Research & Audit Standards:
             1. IMMUTABLE TASK CONSTRAINTS BLOCK:
                Output an explicit, immutable constraints block at the very beginning of your deliverable:
-               - Entity Category: (e.g. AI-agent startups only)
-               - Funding Round: (e.g. Series B only, or as requested)
-               - Funding Amount Threshold: (e.g. > $50M USD)
-               - Announcement Window: (Exact start date through exact end date inclusive; NEVER widen or reinterpret to "Top 2" or different dates)
-               - Result Scope: (e.g. ALL qualifying companies, NOT a top-N subset)
-               - Exclusions: (Acquisitions, rumors, hardware ASICs, non-agent tech)
-               - Required Fields: (Company, Round, Disclosed Amount, Lead Investor, Announcement Date, Primary Source URL)
+               - Entity / Audit Scope: (e.g. AI-agent startups only, or September 2026 Vendor Invoices)
+               - Financial / Contractual Scope: (e.g. Series B only, or Contract Caps & Agreed Rates)
+               - Timeline / Window: (Exact dates or submission cycle; NEVER widen or reinterpret)
+               - Result Scope: (e.g. ALL qualifying items, or 100% of submitted vendor batch)
+               - Exclusions: (Acquisitions, rumors, non-agent tech, unsubmitted accounts)
+               - Required Fields: (e.g. Entity, Math verification, Contract Cap, Net Variance, Epistemic Status, Recommendation)
 
             2. STRUCTURED VERIFICATION TABLE:
-               | Status | Company | Round | Disclosed USD Amount | Lead Investor | Announcement Date | Primary Source Link |
-               (List ONLY [QUALIFIED] candidates here. If 0 candidates qualify in retrieved evidence, display "— None Qualified in Retrieved Evidence —")
+               | Status | Entity / Vendor | Billed Amount | Calculated / Contract Math | Contract Cap | Net Variance | Recommendation |
+               (List audited items clearly with deterministic math. Mark variance as favorable or overage.)
 
             3. EPISTEMIC TRI-STATE VERIFICATION & AUDIT LOG:
-               Evaluate and classify EVERY discovered candidate entity into:
-               - 🟢 [QUALIFIED] — Affirmatively satisfies 100% of immutable constraints with primary-source evidence.
-               - 🔴 [REJECTED - <Exact Criterion Failed>] — Demonstrably fails at least one constraint (state exact reason: e.g. "Round Mismatch: Series C instead of Series B", "Date Out of Window: Announced August 4, 2026", "Excluded: Acquisition by Stripe").
-               - 🟡 [UNVERIFIED - <Reason Incomplete>] — Surfaced in reporting, but retrieved evidence is insufficient/ambiguous to verify all mandatory fields.
+               Evaluate and classify EVERY discovered candidate or audited item into:
+               - 🟢 [QUALIFIED / PASS] — Affirmatively satisfies 100% of constraints with primary evidence.
+               - 🔴 [REJECTED / HOLD - <Exact Criterion Failed>] — Demonstrably fails at least one constraint (e.g. mathematical discrepancy, cap overage, date out of window).
+               - 🟡 [UNVERIFIED - <Reason Incomplete>] — Missing essential evidence, documentation, or verifiable telemetry.
 
-            4. EPISTEMIC HUMILITY ON ZERO RESULTS:
-               - Distinguish "My retrieved evidence did not establish any qualifying companies" from an absolute claim that none exist.
-               - State clearly: "In the retrieved live web evidence across search passes, 0 candidates strictly verified as [QUALIFIED] across all constraints. Below is the audited breakdown of candidates discovered, rejected, and unverified."
+            4. STRICT EVIDENCE BOUNDARY PROTOCOL:
+               - Audit only against evidence explicitly provided in the prompt or retrieved tools.
+               - NEVER claim to have checked or verified underlying telemetry, logs, or external practices that were not provided (e.g. do NOT assert "usage details are consistent with standard AWS invoicing practices" when no usage logs were provided).
+               - If itemized usage logs are absent, state: "[Itemized usage records not provided in submission; audit limited strictly to contract cap adherence and stated total]".
 
-            5. ZERO CITATION LAUNDERING:
+            5. ACTION AUTHORITY DEMARCATION (RECOMMENDER VS DISBURSER):
+               - You are an audit and reconciliation analyst, NOT the final payment execution authority.
+               - NEVER state "Approved for immediate payout".
+               - Verdicts must be phrased strictly as:
+                 - "RECOMMEND PASS (Eligible for Human Finance Sign-Off)"
+                 - "RECOMMEND HOLD (Payment Blocked Pending Revised Invoice)"
+
+            6. ZERO CONTACT INFORMATION FABRICATION:
+               - When drafting communications (emails, notices), NEVER invent email addresses (e.g. do not invent 'billing@apextalent.com').
+               - If not provided in input, format as: To: [NOT PROVIDED IN SUBMISSION - REQUIRES MANUAL ENTRY].
+
+            7. EPISTEMIC HUMILITY ON ZERO RESULTS:
+               - Distinguish "My retrieved evidence did not establish any qualifying items" from an absolute claim that none exist.
+
+            8. ZERO CITATION LAUNDERING:
                - No fabricated metrics or unverified multipliers. All links must be real markdown links to retrieved URLs.
 
             Output ONLY valid raw JSON with:
@@ -326,29 +359,43 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
                 Synthesize your FINAL complete deliverable adhering strictly to Defensible Research & Audit Standards:
                 1. IMMUTABLE TASK CONSTRAINTS BLOCK:
                    Output an explicit, immutable constraints block at the very beginning of your deliverable:
-                   - Entity Category: (e.g. AI-agent startups only)
-                   - Funding Round: (e.g. Series B only, or as requested)
-                   - Funding Amount Threshold: (e.g. > $50M USD)
-                   - Announcement Window: (Exact start date through exact end date inclusive; NEVER widen or reinterpret)
-                   - Result Scope: (e.g. ALL qualifying companies, NOT a top-N subset)
-                   - Exclusions: (Acquisitions, rumors, hardware ASICs, non-agent tech)
-                   - Required Fields: (Company, Round, Disclosed Amount, Lead Investor, Announcement Date, Primary Source URL)
+                   - Entity / Audit Scope: (e.g. AI-agent startups only, or September 2026 Vendor Invoices)
+                   - Financial / Contractual Scope: (e.g. Series B only, or Contract Caps & Agreed Rates)
+                   - Timeline / Window: (Exact dates or submission cycle; NEVER widen or reinterpret)
+                   - Result Scope: (e.g. ALL qualifying items, or 100% of submitted vendor batch)
+                   - Exclusions: (Acquisitions, rumors, non-agent tech, unsubmitted accounts)
+                   - Required Fields: (e.g. Entity, Math verification, Contract Cap, Net Variance, Epistemic Status, Recommendation)
 
                 2. STRUCTURED VERIFICATION TABLE:
-                   | Status | Company | Round | Disclosed USD Amount | Lead Investor | Announcement Date | Primary Source Link |
-                   (List ONLY [QUALIFIED] candidates here. If 0 qualify in retrieved evidence, display "— None Qualified in Retrieved Evidence —")
+                   | Status | Entity / Vendor | Billed Amount | Calculated / Contract Math | Contract Cap | Net Variance | Recommendation |
+                   (List audited items clearly with deterministic math. Mark variance as favorable or overage.)
 
                 3. EPISTEMIC TRI-STATE VERIFICATION & AUDIT LOG:
-                   Evaluate and classify EVERY discovered candidate entity into:
-                   - 🟢 [QUALIFIED] — Affirmatively satisfies 100% of immutable constraints with primary-source evidence.
-                   - 🔴 [REJECTED - <Exact Criterion Failed>] — Demonstrably fails at least one constraint (state exact reason: e.g. "Round Mismatch: Series C instead of Series B", "Date Out of Window: Announced August 4, 2026", "Excluded: Acquisition by Stripe").
-                   - 🟡 [UNVERIFIED - <Reason Incomplete>] — Surfaced in reporting, but retrieved evidence is insufficient/ambiguous to verify all mandatory fields.
+                   Evaluate and classify EVERY discovered candidate or audited item into:
+                   - 🟢 [QUALIFIED / PASS] — Affirmatively satisfies 100% of constraints with primary evidence.
+                   - 🔴 [REJECTED / HOLD - <Exact Criterion Failed>] — Demonstrably fails at least one constraint (e.g. mathematical discrepancy, cap overage, date out of window).
+                   - 🟡 [UNVERIFIED - <Reason Incomplete>] — Missing essential evidence, documentation, or verifiable telemetry.
 
-                4. EPISTEMIC HUMILITY ON ZERO RESULTS:
-                   - Distinguish "My retrieved evidence did not establish any qualifying companies" from an absolute claim that none exist.
-                   - State clearly: "In the retrieved live web evidence across multi-hop search passes, 0 candidates strictly verified as [QUALIFIED] across all constraints. Below is the audited breakdown of candidates discovered, rejected, and unverified."
+                4. STRICT EVIDENCE BOUNDARY PROTOCOL:
+                   - Audit only against evidence explicitly provided in the prompt or retrieved tools.
+                   - NEVER claim to have checked or verified underlying telemetry, logs, or external practices that were not provided (e.g. do NOT assert "usage details are consistent with standard AWS invoicing practices" when no usage logs were provided).
+                   - If itemized usage logs are absent, state: "[Itemized usage records not provided in submission; audit limited strictly to contract cap adherence and stated total]".
 
-                5. ZERO CITATION LAUNDERING:
+                5. ACTION AUTHORITY DEMARCATION (RECOMMENDER VS DISBURSER):
+                   - You are an audit and reconciliation analyst, NOT the final payment execution authority.
+                   - NEVER state "Approved for immediate payout".
+                   - Verdicts must be phrased strictly as:
+                     - "RECOMMEND PASS (Eligible for Human Finance Sign-Off)"
+                     - "RECOMMEND HOLD (Payment Blocked Pending Revised Invoice)"
+
+                6. ZERO CONTACT INFORMATION FABRICATION:
+                   - When drafting communications (emails, notices), NEVER invent email addresses (e.g. do not invent 'billing@apextalent.com').
+                   - If not provided in input, format as: To: [NOT PROVIDED IN SUBMISSION - REQUIRES MANUAL ENTRY].
+
+                7. EPISTEMIC HUMILITY ON ZERO RESULTS:
+                   - Distinguish "My retrieved evidence did not establish any qualifying items" from an absolute claim that none exist.
+
+                8. ZERO CITATION LAUNDERING:
                    - No fabricated metrics or unverified multipliers. All links must be real markdown links to retrieved URLs.
 
                 Output ONLY valid raw JSON with:
@@ -386,7 +433,7 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
                 'tool_input': None,
                 'tool_output': 'Direct synthesis completed'
             })
-            record.final_output = plan.get('final_response', 'Task concluded successfully.')
+            record.final_output = plan.get('final_response') or raw_text or 'Task concluded successfully.'
 
         # Unpack JSON if final_output is still a JSON string
         if record.final_output and isinstance(record.final_output, str):
