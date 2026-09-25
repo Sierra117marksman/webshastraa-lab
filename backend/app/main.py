@@ -102,7 +102,8 @@ def get_analytics():
 
 @app.get('/api/settings')
 def get_settings():
-    groq_key = os.getenv('GROQ_API_KEY', '')
+    from app.engine.gemini_client import get_groq_api_key
+    groq_key = get_groq_api_key()
     tavily_key = os.getenv('TAVILY_API_KEY', '')
     smtp_user = os.getenv('SMTP_USER', 'webshastraa@gmail.com')
     smtp_pass = os.getenv('SMTP_PASS', '')

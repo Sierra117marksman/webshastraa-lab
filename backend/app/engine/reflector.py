@@ -21,17 +21,18 @@ from app.models.memory import MemoryRecord, MemoryCategory, MemoryTrigger
 def _call_groq(prompt: str) -> Optional[str]:
     try:
         from groq import Groq
-        key = os.getenv("GROQ_API_KEY", "")
-        if not key.strip():
+        from app.engine.gemini_client import get_groq_api_key
+        key = get_groq_api_key()
+        if not key:
             return None
         client = Groq(api_key=key)
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,
-            max_tokens=512,
+            max_tokens=1024,
         )
-        return response.choices[0].message.content.strip()
+        return (response.choices[0].message.content or "").strip()
     except Exception:
         return None
 
