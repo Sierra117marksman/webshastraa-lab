@@ -2,21 +2,26 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Menu, Compass } from 'lucide-react';
-import Sidebar from '@/components/Sidebar';
+import Sidebar, { ActiveTab } from '@/components/Sidebar';
 import HireStudio from '@/components/HireStudio';
 import RosterView from '@/components/RosterView';
 import ApprovalFeed from '@/components/ApprovalFeed';
 import SettingsView from '@/components/SettingsView';
 import RoiTelemetry from '@/components/RoiTelemetry';
 import CoachMarkTour from '@/components/CoachMarkTour';
-import { AIEmployeeSpec, TaskRecord, SettingsState, AnalyticsData } from '@/types';
+import CommandCenter from '@/components/CommandCenter';
+import FloorplanView from '@/components/FloorplanView';
+import OfficeView from '@/components/OfficeView';
+import { AIEmployeeSpec, TaskRecord, SettingsState, AnalyticsData, TodayStats } from '@/types';
 
-const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'https://webshastraa-lab.onrender.com';
+const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<'hire' | 'roster' | 'feed' | 'settings'>('roster');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('floorplan');
+  const [selectedEmployee, setSelectedEmployee] = useState<AIEmployeeSpec | null>(null);
   const [employees, setEmployees] = useState<AIEmployeeSpec[]>([]);
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
+  const [todayStats, setTodayStats] = useState<TodayStats | null>(null);
   const [dispatchingId, setDispatchingId] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isTourOpen, setIsTourOpen] = useState(false);
@@ -45,7 +50,7 @@ export default function Home() {
 
   useEffect(() => {
     const saved = localStorage.getItem('webshastraa_api_base');
-    if (saved) {
+    if (saved && !window.location.hostname.includes('localhost')) {
       setTimeout(() => {
         setApiBase(saved);
       }, 0);
@@ -55,19 +60,27 @@ export default function Home() {
   const fetchData = useCallback(async (targetBase?: string) => {
     const base = targetBase || apiBase;
     try {
-      const [empRes, taskRes, setRes, anaRes] = await Promise.all([
+      const [empRes, taskRes, setRes, anaRes, todayRes] = await Promise.all([
         fetch(`${base}/api/employees`),
         fetch(`${base}/api/tasks`),
         fetch(`${base}/api/settings`),
-        fetch(`${base}/api/analytics`)
+        fetch(`${base}/api/analytics`),
+        fetch(`${base}/api/analytics/today`)
       ]);
-      if (empRes.ok) setEmployees(await empRes.json());
+      if (empRes.ok) {
+        const emps: AIEmployeeSpec[] = await empRes.json();
+        setEmployees(emps);
+        setSelectedEmployee((prev) => {
+          if (!prev) return null;
+          return emps.find((e) => e.id === prev.id) || prev;
+        });
+      }
       if (taskRes.ok) setTasks(await taskRes.json());
       if (setRes.ok) setSettings(await setRes.json());
       if (anaRes.ok) setAnalytics(await anaRes.json());
+      if (todayRes.ok) setTodayStats(await todayRes.json());
       setIsBackendOnline(true);
-    } catch (err) {
-      console.error('Failed to sync state:', err);
+    } catch {
       setIsBackendOnline(false);
     }
   }, [apiBase]);
@@ -80,7 +93,6 @@ export default function Home() {
       fetchData();
     }, 3500);
 
-    // Auto-trigger tour on first visit
     const hasSeenTour = localStorage.getItem('webshastraa_tour_seen');
     let tourTimer: NodeJS.Timeout | null = null;
     if (!hasSeenTour) {
@@ -113,7 +125,9 @@ export default function Home() {
       });
       if (res.ok) {
         await fetchData();
-        setActiveTab('feed');
+        if (activeTab !== 'office') {
+          setActiveTab('feed');
+        }
       }
     } catch {
       alert(`Failed to dispatch task. Please verify backend is running at ${apiBase}`);
@@ -128,22 +142,28 @@ export default function Home() {
     fetchData();
   };
 
-  const handleApprove = async (taskId: string, approved: boolean) => {
+  const handleApprove = async (taskId: string, approved: boolean, feedback?: string): Promise<void> => {
     try {
       const res = await fetch(`${apiBase}/api/tasks/${taskId}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ approved })
+        body: JSON.stringify({ approved, feedback })
       });
       if (res.ok) {
-        fetchData();
+        await fetchData();
       }
     } catch {
       alert('Approval request failed.');
     }
   };
 
-  const handleSaveSettings = async (payload: { tavily_api_key?: string; groq_api_key?: string; smtp_user?: string; smtp_pass?: string; blacklist_domains?: string }) => {
+  const handleSaveSettings = async (payload: {
+    tavily_api_key?: string;
+    groq_api_key?: string;
+    smtp_user?: string;
+    smtp_pass?: string;
+    blacklist_domains?: string;
+  }) => {
     try {
       const res = await fetch(`${apiBase}/api/settings`, {
         method: 'POST',
@@ -219,7 +239,9 @@ export default function Home() {
         {/* Desktop Quick Header */}
         <header className="hidden md:flex items-center justify-between px-8 py-3.5 border-b border-white/[0.04] bg-transparent">
           <div className="flex items-center gap-2 text-xs text-zinc-400">
-            <span>Workspace: <strong className="text-zinc-200">Webshastraa Labs</strong></span>
+            <span>
+              Workspace: <strong className="text-zinc-200">Webshastraa Labs</strong>
+            </span>
             <span className="text-zinc-600">•</span>
             <span className="text-emerald-400 flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -257,15 +279,65 @@ export default function Home() {
         )}
 
         <main className="flex-1 p-4 sm:p-6 md:p-10 max-w-7xl w-full mx-auto">
-          {/* Executive Telemetry & Value Creation Strip */}
-          <RoiTelemetry analytics={analytics} />
+          {/* Executive Telemetry & Value Creation Strip (hidden inside individual offices) */}
+          {activeTab !== 'office' && <RoiTelemetry analytics={analytics} />}
+
+          {activeTab === 'hq' && (
+            <CommandCenter
+              todayStats={todayStats}
+              employees={employees}
+              tasks={tasks}
+              onEnterHQ={() => setActiveTab('floorplan')}
+              onEnterOffice={(emp) => {
+                setSelectedEmployee(emp);
+                setActiveTab('office');
+              }}
+            />
+          )}
+
+          {activeTab === 'floorplan' && (
+            <FloorplanView
+              employees={employees}
+              tasks={tasks}
+              todayStats={todayStats}
+              apiBase={apiBase}
+              onEnterOffice={(emp) => {
+                setSelectedEmployee(emp);
+                setActiveTab('office');
+              }}
+            />
+          )}
+
+          {activeTab === 'office' && selectedEmployee && (
+            <OfficeView
+              employee={selectedEmployee}
+              tasks={tasks}
+              apiBase={apiBase}
+              onDispatch={handleDispatch}
+              onApprove={handleApprove}
+              onClose={() => setActiveTab('floorplan')}
+            />
+          )}
+
+          {activeTab === 'office' && !selectedEmployee && (
+            <FloorplanView
+              employees={employees}
+              tasks={tasks}
+              todayStats={todayStats}
+              apiBase={apiBase}
+              onEnterOffice={(emp) => {
+                setSelectedEmployee(emp);
+                setActiveTab('office');
+              }}
+            />
+          )}
 
           {activeTab === 'hire' && (
             <HireStudio
               apiBase={apiBase}
               onEmployeeHired={(newEmp) => {
                 setEmployees((prev) => [newEmp, ...prev]);
-                setActiveTab('roster');
+                setActiveTab('floorplan');
               }}
             />
           )}

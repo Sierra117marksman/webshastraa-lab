@@ -1,12 +1,14 @@
 import os
 import json
 import uuid
+import logging
 from datetime import datetime
 from typing import Dict, Any, Optional
 from google import genai
 
 from app.models.employee import AIEmployeeSpec, TaskRecord
-from app.db.store import save_task, get_task
+from app.models.memory import AuditLogEntry
+from app.db.store import save_task, get_task, list_active_memories, save_audit_log
 from app.tools.registry import (
     execute_web_search,
     execute_email_sender,
@@ -15,6 +17,9 @@ from app.tools.registry import (
     TOOLS_METADATA
 )
 from app.engine.gemini_client import generate_content_with_retry
+from app.engine.policy_engine import check_tool_permission
+
+logger = logging.getLogger(__name__)
 
 RUNNER_PROMPT_TEMPLATE = '''
 You are {name}, working as an autonomous {role} in the {department} department.
@@ -28,6 +33,7 @@ Your Standard Operating Procedures (SOPs):
 Available Tools:
 {tools_formatted}
 
+{memories_section}
 Current Task:
 {task_prompt}
 
@@ -165,6 +171,25 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
     sops_formatted = '\n'.join(f'- {s}' for s in employee.sops)
     tools_formatted = json.dumps([t for t in TOOLS_METADATA if t['id'] in employee.tools], indent=2)
 
+    # ── Memory injection ──────────────────────────────────────────────────────
+    active_memories = list_active_memories(employee.id)
+    memory_ids_used = [m.id for m in active_memories]
+
+    if active_memories:
+        mem_lines = []
+        for m in active_memories:
+            scope_tag = f"[{m.scope}] " if m.scope != "global" else ""
+            mem_lines.append(f"- {scope_tag}{m.distilled_rule}  (priority {m.priority}, source: {m.source})")
+        memories_section = (
+            "MANDATORY LESSONS LEARNED — CHECK BEFORE EVERY ACTION:\n"
+            "The following rules were extracted from past mistakes and founder feedback.\n"
+            "Before taking any action, verify it does not violate any rule below.\n\n"
+            + "\n".join(mem_lines)
+            + "\n"
+        )
+    else:
+        memories_section = ""
+
     current_date = datetime.now().strftime('%B %d, %Y')
     prompt = RUNNER_PROMPT_TEMPLATE.format(
         name=employee.name,
@@ -175,7 +200,17 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
         persona=employee.persona,
         sops_formatted=sops_formatted,
         tools_formatted=tools_formatted,
+        memories_section=memories_section,
         task_prompt=task_prompt
+    )
+
+    # ── Audit: dispatch event ─────────────────────────────────────────────────
+    _log_audit(
+        employee_id=employee.id,
+        task_id=task_id,
+        event_type="dispatch",
+        memories_used=memory_ids_used,
+        output_summary=f"Task dispatched: {task_prompt[:120]}",
     )
 
     tools_called = []
@@ -210,25 +245,33 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
                 if not tool_params.get('query'):
                     tool_params = {'query': task_prompt[:120]}
 
-        # Check if action requires human-in-the-loop approval
-        if action_type == 'call_tool' and tool_name in employee.requires_approval_for:
-            record.status = 'waiting_approval'
-            record.pending_action = {
-                'tool_name': tool_name,
-                'tool_params': tool_params,
-                'explanation': thought
-            }
-            record.steps.append({
-                'step_number': 1,
-                'thought': thought,
-                'tool_called': tool_name,
-                'tool_input': tool_params,
-                'tool_output': 'PAUSED: Awaiting Founder Approval'
-            })
-            record.tokens_used = tokens_in + tokens_out
-            record.cost_usd = calculate_task_cost(tokens_in, tokens_out, tools_called)
-            save_task(record)
-            return record
+        # ── Policy Engine check (replaces legacy requires_approval_for list) ──
+        if action_type == 'call_tool' and tool_name:
+            policy = check_tool_permission(employee.id, tool_name, tool_params, task_id)
+            if not policy.allowed:
+                record.status = 'failed'
+                record.final_output = f'Policy block: {policy.reason}'
+                record.completed_at = datetime.utcnow().isoformat()
+                save_task(record)
+                return record
+            if policy.requires_approval:
+                record.status = 'waiting_approval'
+                record.pending_action = {
+                    'tool_name': tool_name,
+                    'tool_params': tool_params,
+                    'explanation': thought
+                }
+                record.steps.append({
+                    'step_number': 1,
+                    'thought': thought,
+                    'tool_called': tool_name,
+                    'tool_input': tool_params,
+                    'tool_output': 'PAUSED: Awaiting Founder Approval'
+                })
+                record.tokens_used = tokens_in + tokens_out
+                record.cost_usd = calculate_task_cost(tokens_in, tokens_out, tools_called)
+                save_task(record)
+                return record
 
         # Execute tool if needed
         tool_output = None
@@ -316,24 +359,32 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
             step2_tool = step2_plan.get('tool_name')
             step2_params = step2_plan.get('tool_params') or {}
 
-            if step2_action == 'call_tool' and step2_tool in employee.requires_approval_for:
-                record.status = 'waiting_approval'
-                record.pending_action = {
-                    'tool_name': step2_tool,
-                    'tool_params': step2_params,
-                    'explanation': step2_thought
-                }
-                record.steps.append({
-                    'step_number': 2,
-                    'thought': step2_thought,
-                    'tool_called': step2_tool,
-                    'tool_input': step2_params,
-                    'tool_output': 'PAUSED: Awaiting Founder Approval'
-                })
-                record.tokens_used = tokens_in + tokens_out
-                record.cost_usd = calculate_task_cost(tokens_in, tokens_out, tools_called)
-                save_task(record)
-                return record
+            if step2_action == 'call_tool' and step2_tool:
+                step2_policy = check_tool_permission(employee.id, step2_tool, step2_params, task_id)
+                if not step2_policy.allowed:
+                    record.status = 'failed'
+                    record.final_output = f'Policy block at step 2: {step2_policy.reason}'
+                    record.completed_at = datetime.utcnow().isoformat()
+                    save_task(record)
+                    return record
+                if step2_policy.requires_approval:
+                    record.status = 'waiting_approval'
+                    record.pending_action = {
+                        'tool_name': step2_tool,
+                        'tool_params': step2_params,
+                        'explanation': step2_thought
+                    }
+                    record.steps.append({
+                        'step_number': 2,
+                        'thought': step2_thought,
+                        'tool_called': step2_tool,
+                        'tool_input': step2_params,
+                        'tool_output': 'PAUSED: Awaiting Founder Approval'
+                    })
+                    record.tokens_used = tokens_in + tokens_out
+                    record.cost_usd = calculate_task_cost(tokens_in, tokens_out, tools_called)
+                    save_task(record)
+                    return record
             elif step2_action == 'call_tool' and step2_tool:
                 tools_called.append(step2_tool)
                 step2_out = execute_tool_call(step2_tool, step2_params)
@@ -458,6 +509,40 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
         save_task(record)
         return record
 
+
+def _log_audit(
+    employee_id: str,
+    task_id: str,
+    event_type: str,
+    memories_used: list = None,
+    tools_called: list = None,
+    decision: str = None,
+    output_summary: str = "",
+    founder_feedback: str = None,
+    cost_usd: float = 0.0,
+    tokens_used: int = 0,
+):
+    """Write an audit log entry. Silently swallows errors so it never crashes the pipeline."""
+    try:
+        entry = AuditLogEntry(
+            id=f"audit_{uuid.uuid4().hex[:12]}",
+            employee_id=employee_id,
+            task_id=task_id,
+            event_type=event_type,  # type: ignore[arg-type]
+            memories_used=memories_used or [],
+            tools_called=tools_called or [],
+            decision=decision,
+            output_summary=output_summary[:500],
+            founder_feedback=founder_feedback,
+            cost_usd=cost_usd,
+            tokens_used=tokens_used,
+            timestamp=datetime.utcnow().isoformat(),
+        )
+        save_audit_log(entry)
+    except Exception as exc:
+        logger.warning(f"[Audit log write failed] {exc}")
+
+
 def resume_approved_task(task_id: str, approved: bool, founder_feedback: Optional[str] = None) -> TaskRecord:
     record = get_task(task_id)
     if not record or record.status != 'waiting_approval':
@@ -468,12 +553,60 @@ def resume_approved_task(task_id: str, approved: bool, founder_feedback: Optiona
         record.final_output = f'Action rejected by founder. Feedback: {founder_feedback or "No feedback given."}'
         record.completed_at = datetime.utcnow().isoformat()
         save_task(record)
+
+        # ── Reflection trigger ────────────────────────────────────────────────
+        # Generate a proposed memory from the rejection feedback (async-safe, best-effort)
+        if founder_feedback and founder_feedback.strip():
+            try:
+                from app.engine.reflector import generate_proposed_memory
+                from app.db.store import save_memory, get_employee
+                emp = get_employee(record.employee_id)
+                if emp:
+                    proposed = generate_proposed_memory(
+                        employee_id=emp.id,
+                        employee_name=emp.name,
+                        employee_role=emp.role,
+                        task_id=task_id,
+                        task_prompt=record.task_prompt,
+                        what_happened=str(record.pending_action or "Pending tool action"),
+                        feedback=founder_feedback,
+                        trigger_event="rejection",
+                    )
+                    if proposed:
+                        save_memory(proposed)
+                        _log_audit(
+                            employee_id=record.employee_id,
+                            task_id=task_id,
+                            event_type="reflection_proposed",
+                            decision=f"Proposed memory: {proposed.id}",
+                            output_summary=proposed.distilled_rule[:200],
+                            founder_feedback=founder_feedback,
+                        )
+            except Exception as exc:
+                logger.warning(f"[Reflection failed] {exc}")
+
+        _log_audit(
+            employee_id=record.employee_id,
+            task_id=task_id,
+            event_type="approval_rejected",
+            decision="Rejected",
+            founder_feedback=founder_feedback,
+            output_summary=record.final_output[:200],
+        )
         return record
 
-    # Approved: execute the pending tool call
+    # Approved: policy check the pending tool before executing
     pending = record.pending_action or {}
     tool_name = pending.get('tool_name')
     tool_params = pending.get('tool_params') or {}
+
+    policy = check_tool_permission(record.employee_id, tool_name, tool_params, task_id)
+    if not policy.allowed:
+        record.status = 'failed'
+        record.final_output = f'Post-approval policy block: {policy.reason}'
+        record.completed_at = datetime.utcnow().isoformat()
+        save_task(record)
+        return record
 
     result = execute_tool_call(tool_name, tool_params)
     record.steps.append({
@@ -489,4 +622,15 @@ def resume_approved_task(task_id: str, approved: bool, founder_feedback: Optiona
     record.completed_at = datetime.utcnow().isoformat()
     record.pending_action = None
     save_task(record)
+
+    _log_audit(
+        employee_id=record.employee_id,
+        task_id=task_id,
+        event_type="approval_granted",
+        tools_called=[tool_name],
+        decision="Approved and executed",
+        founder_feedback=founder_feedback,
+        output_summary=record.final_output[:200],
+    )
     return record
+

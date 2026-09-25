@@ -3,6 +3,7 @@ import json
 import os
 from typing import List, Optional
 from app.models.employee import AIEmployeeSpec, TaskRecord
+from app.models.memory import MemoryRecord, AuditLogEntry, ToolPermission, SEEDED_PERMISSIONS
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'ai_employee.db')
 
@@ -14,7 +15,7 @@ def get_connection():
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
-    
+
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS employees (
         id TEXT PRIMARY KEY,
@@ -24,7 +25,7 @@ def init_db():
         created_at TEXT NOT NULL
     )
     ''')
-    
+
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS tasks (
         id TEXT PRIMARY KEY,
@@ -35,10 +36,43 @@ def init_db():
         FOREIGN KEY (employee_id) REFERENCES employees (id)
     )
     ''')
-    
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS memories (
+        id TEXT PRIMARY KEY,
+        employee_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        priority INTEGER NOT NULL DEFAULT 3,
+        data TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    ''')
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS permissions (
+        employee_id TEXT NOT NULL,
+        tool_id TEXT NOT NULL,
+        data TEXT NOT NULL,
+        PRIMARY KEY (employee_id, tool_id)
+    )
+    ''')
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS audit_log (
+        id TEXT PRIMARY KEY,
+        employee_id TEXT NOT NULL,
+        task_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        data TEXT NOT NULL
+    )
+    ''')
+
     conn.commit()
     conn.close()
     seed_templates_if_empty()
+    seed_permissions_if_empty()
+
 
 def save_employee(employee: AIEmployeeSpec):
     conn = get_connection()
@@ -189,7 +223,7 @@ def seed_templates_if_empty():
             requires_approval_for=['email_sender']
         )
     ]
-    
+
     if count == 0:
         for t in templates:
             save_employee(t)
@@ -202,3 +236,145 @@ def seed_templates_if_empty():
                 existing.persona = t.persona
                 existing.role = t.role
                 save_employee(existing)
+
+
+# ---------------------------------------------------------------------------
+# Permissions CRUD
+# ---------------------------------------------------------------------------
+
+def seed_permissions_if_empty():
+    """Seed the default permission set for the 4 seeded employees if not already set."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(*) as cnt FROM permissions')
+    count = cursor.fetchone()['cnt']
+    conn.close()
+    if count == 0:
+        for emp_id, perms in SEEDED_PERMISSIONS.items():
+            for p in perms:
+                save_permission(emp_id, p)
+
+
+def save_permission(employee_id: str, perm: ToolPermission):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        'INSERT OR REPLACE INTO permissions (employee_id, tool_id, data) VALUES (?, ?, ?)',
+        (employee_id, perm.tool_id, json.dumps(perm.model_dump()))
+    )
+    conn.commit()
+    conn.close()
+
+
+def list_permissions(employee_id: str) -> List[ToolPermission]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT data FROM permissions WHERE employee_id = ?', (employee_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [ToolPermission(**json.loads(r['data'])) for r in rows]
+
+
+def get_permission(employee_id: str, tool_id: str) -> Optional[ToolPermission]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT data FROM permissions WHERE employee_id = ? AND tool_id = ?', (employee_id, tool_id))
+    row = cursor.fetchone()
+    conn.close()
+    return ToolPermission(**json.loads(row['data'])) if row else None
+
+
+# ---------------------------------------------------------------------------
+# Memory CRUD
+# ---------------------------------------------------------------------------
+
+def save_memory(memory: MemoryRecord):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        'INSERT OR REPLACE INTO memories (id, employee_id, status, priority, data, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+        (memory.id, memory.employee_id, memory.status, memory.priority,
+         json.dumps(memory.model_dump()), memory.created_at)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_memory(memory_id: str) -> Optional[MemoryRecord]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT data FROM memories WHERE id = ?', (memory_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return MemoryRecord(**json.loads(row['data'])) if row else None
+
+
+def list_memories(employee_id: str, status: Optional[str] = None) -> List[MemoryRecord]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    if status:
+        cursor.execute(
+            'SELECT data FROM memories WHERE employee_id = ? AND status = ? ORDER BY priority ASC, created_at DESC',
+            (employee_id, status)
+        )
+    else:
+        cursor.execute(
+            'SELECT data FROM memories WHERE employee_id = ? ORDER BY priority ASC, created_at DESC',
+            (employee_id,)
+        )
+    rows = cursor.fetchall()
+    conn.close()
+    return [MemoryRecord(**json.loads(r['data'])) for r in rows]
+
+
+def list_active_memories(employee_id: str) -> List[MemoryRecord]:
+    return list_memories(employee_id, status='active')
+
+
+def delete_memory(memory_id: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM memories WHERE id = ?', (memory_id,))
+    conn.commit()
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Audit Log CRUD
+# ---------------------------------------------------------------------------
+
+def save_audit_log(entry: AuditLogEntry):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        'INSERT OR REPLACE INTO audit_log (id, employee_id, task_id, event_type, timestamp, data) VALUES (?, ?, ?, ?, ?, ?)',
+        (entry.id, entry.employee_id, entry.task_id, entry.event_type, entry.timestamp,
+         json.dumps(entry.model_dump()))
+    )
+    conn.commit()
+    conn.close()
+
+
+def list_audit_log(employee_id: Optional[str] = None, task_id: Optional[str] = None, limit: int = 100) -> List[AuditLogEntry]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    if employee_id and task_id:
+        cursor.execute(
+            'SELECT data FROM audit_log WHERE employee_id = ? AND task_id = ? ORDER BY timestamp DESC LIMIT ?',
+            (employee_id, task_id, limit)
+        )
+    elif employee_id:
+        cursor.execute(
+            'SELECT data FROM audit_log WHERE employee_id = ? ORDER BY timestamp DESC LIMIT ?',
+            (employee_id, limit)
+        )
+    elif task_id:
+        cursor.execute(
+            'SELECT data FROM audit_log WHERE task_id = ? ORDER BY timestamp DESC LIMIT ?',
+            (task_id, limit)
+        )
+    else:
+        cursor.execute('SELECT data FROM audit_log ORDER BY timestamp DESC LIMIT ?', (limit,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [AuditLogEntry(**json.loads(r['data'])) for r in rows]

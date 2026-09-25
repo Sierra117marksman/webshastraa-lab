@@ -13,13 +13,17 @@ import {
   ChevronRight,
   ShieldCheck,
   Compass,
-  X
+  X,
+  LayoutGrid,
+  Activity
 } from 'lucide-react';
 import { SettingsState } from '@/types';
 
+export type ActiveTab = 'hq' | 'floorplan' | 'office' | 'hire' | 'roster' | 'feed' | 'settings';
+
 interface SidebarProps {
-  activeTab: 'hire' | 'roster' | 'feed' | 'settings';
-  setActiveTab: (tab: 'hire' | 'roster' | 'feed' | 'settings') => void;
+  activeTab: ActiveTab;
+  setActiveTab: (tab: ActiveTab) => void;
   employeeCount: number;
   pendingApprovalsCount: number;
   settings: SettingsState;
@@ -39,6 +43,18 @@ export default function Sidebar({
   onStartTour
 }: SidebarProps) {
   const navItems = [
+    {
+      id: 'hq' as const,
+      label: 'Command Center',
+      icon: Activity,
+      tag: 'Today'
+    },
+    {
+      id: 'floorplan' as const,
+      label: 'Virtual Floorplan',
+      icon: LayoutGrid,
+      count: employeeCount
+    },
     {
       id: 'hire' as const,
       label: 'Hire Studio',
