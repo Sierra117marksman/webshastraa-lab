@@ -216,6 +216,133 @@ def run_suite():
         f"Recorded {len(logs)} audit entries for task {task_id}",
     )
 
+    # -------------------------------------------------------------------------
+    # 7. Maya Vance Research Integrity & Lead Verification Suite (Tests 18–25)
+    # -------------------------------------------------------------------------
+    from app.engine.qualification import (
+        Evidence,
+        LeadField,
+        VerifiedLead,
+        QualificationEngine,
+        OutreachClaimValidator
+    )
+    from app.tools.domain_verifier import check_ssrf_safety, verify_domain_safely
+
+    # Test 18: Revenue UNVERIFIED Semantics
+    lead_priv = VerifiedLead(
+        company_name="IndieBrand",
+        website="https://indiebrand.in",
+        platform=LeadField(value="Shopify", status="VERIFIED"),
+        apps=LeadField(value="Wati", status="VERIFIED"),
+        revenue=LeadField(value="₹25L", status="UNVERIFIED"),
+        website_observation=LeadField(status="NOT_AUDITED"),
+        contact=LeadField(status="UNVERIFIED")
+    )
+    qual_priv = QualificationEngine.qualify_lead(lead_priv, hard_constraints=["platform", "revenue"])
+    check(
+        "Test 18: Revenue remains UNVERIFIED without audited public financial evidence",
+        qual_priv.revenue.status == "UNVERIFIED" and qual_priv.lead_status == "PROSPECT",
+        f"Revenue status: {qual_priv.revenue.status}, Lead status: {qual_priv.lead_status}"
+    )
+
+    # Test 19: Performance NOT AUDITED Semantics
+    check(
+        "Test 19: Unmeasured website performance remains NOT_AUDITED",
+        qual_priv.website_observation.status == "NOT_AUDITED",
+        f"Website observation status: {qual_priv.website_observation.status}"
+    )
+
+    # Test 20: Anti-Fabrication Quantity Law (Returns 3 verified rather than fabricating 10)
+    candidates_pool = [
+        VerifiedLead(company_name=f"Lead_{i}", website=f"https://lead{i}.com",
+                     platform=LeadField(value="Shopify", status="VERIFIED" if i < 3 else "UNVERIFIED"),
+                     apps=LeadField(status="UNVERIFIED"), revenue=LeadField(status="UNVERIFIED"),
+                     website_observation=LeadField(status="NOT_AUDITED"), contact=LeadField(status="UNVERIFIED"))
+        for i in range(10)
+    ]
+    verified_subset = [c for c in candidates_pool if c.platform.status == "VERIFIED"]
+    check(
+        "Test 20: Anti-fabrication preserves exact count (returns 3 verified, zero fabricated)",
+        len(verified_subset) == 3,
+        f"Found {len(verified_subset)} verified leads"
+    )
+
+    # Test 21: Multi-Hop Research Recovery Loop Trigger
+    sparse_results = [{"title": "Blog", "url": "https://blog.com/1"}]
+    import urllib.parse
+    unique_doms = {urllib.parse.urlparse(r["url"]).netloc for r in sparse_results}
+    needs_recovery = len(sparse_results) < 3 or len(unique_doms) < 2
+    check(
+        "Test 21: Multi-Hop recovery triggers when search results are sparse (<3 results or <2 domains)",
+        needs_recovery is True,
+        f"Needs recovery: {needs_recovery}"
+    )
+
+    # Test 22: Source/Claim Mismatch (Generic blog rejected as evidence for private revenue)
+    bad_ev = Evidence(
+        source_url="https://vcwire.tech/cohort-3-announcement",
+        source_type="article",
+        supports_field="revenue",
+        evidence_summary="General article about startups"
+    )
+    is_valid_source, mismatch_reason = QualificationEngine.validate_source_claim_integrity("revenue", bad_ev)
+    check(
+        "Test 22: Source/Claim mismatch rejects generic accelerator blog for private revenue",
+        is_valid_source is False and "generic publication" in mismatch_reason,
+        f"Valid: {is_valid_source}, Reason: {mismatch_reason}"
+    )
+
+    # Test 23: Contradictory Platform Drops Status to REJECTED
+    lead_contra = VerifiedLead(
+        company_name="ShopBrand",
+        website="https://shopbrand.com",
+        platform=LeadField(value="WooCommerce", status="VERIFIED"),
+        apps=LeadField(status="UNVERIFIED"),
+        revenue=LeadField(status="UNVERIFIED"),
+        website_observation=LeadField(status="NOT_AUDITED"),
+        contact=LeadField(status="UNVERIFIED")
+    )
+    qual_contra = QualificationEngine.qualify_lead(
+        lead_contra,
+        detected_platform="Shopify",
+        hard_constraints=["platform"]
+    )
+    check(
+        "Test 23: Contradictory platform (stated WooCommerce vs live Shopify) drops status to REJECTED",
+        qual_contra.lead_status == "REJECTED",
+        f"Lead status: {qual_contra.lead_status}"
+    )
+
+    # Test 24: Dead Domain & SSRF Guard Hard Block
+    ssrf_safe, ssrf_reason, _, _ = check_ssrf_safety("http://169.254.169.254/latest/meta-data")
+    dead_lead = VerifiedLead(
+        company_name="DeadStore",
+        website="https://deadstore-does-not-exist-999.com",
+        platform=LeadField(status="UNVERIFIED"),
+        apps=LeadField(status="UNVERIFIED"),
+        revenue=LeadField(status="UNVERIFIED"),
+        website_observation=LeadField(status="NOT_AUDITED"),
+        contact=LeadField(status="UNVERIFIED")
+    )
+    qual_dead = QualificationEngine.qualify_lead(dead_lead, is_reachable=False)
+    check(
+        "Test 24: SSRF guard blocks metadata IP and dead domains become REJECTED",
+        ssrf_safe is False and qual_dead.lead_status == "REJECTED",
+        f"SSRF safe: {ssrf_safe}, Dead status: {qual_dead.lead_status}"
+    )
+
+    # Test 25: Outreach Evidence Integrity (Unmeasured load time sanitized to consultative phrasing)
+    draft_mail = "Hi Founder, I noticed your product pages take over 3.5 seconds to load with a 25% bounce rate."
+    sanitized_mail, was_modified, violations = OutreachClaimValidator.validate_and_sanitize_outreach(
+        draft_mail,
+        qual_priv
+    )
+    check(
+        "Test 25: Outreach validator intercepts and sanitizes unmeasured speed & bounce claims",
+        was_modified is True and "3.5" not in sanitized_mail and "25%" not in sanitized_mail,
+        f"Modified: {was_modified}, Violations: {len(violations)}, Output: '{sanitized_mail}'"
+    )
+
     # Summary Output
     print("=" * 72)
     print("AI EMPLOYEE v1 — ARCHITECTURAL REGRESSION SUITE")

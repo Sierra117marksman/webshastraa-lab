@@ -36,6 +36,13 @@ TOOLS_METADATA = [
         'description': 'Posts alerts, daily briefings, or task summaries into Slack or Discord.',
         'parameters': {'channel': 'string', 'message': 'string'},
         'requires_approval': False
+    },
+    {
+        'id': 'domain_verifier',
+        'name': 'SSRF-Safe Domain Footprint Verifier',
+        'description': 'Safely audits candidate websites for reachability, redirect chains, and platform/app signatures without SSRF risk.',
+        'parameters': {'url': 'string'},
+        'requires_approval': False
     }
 ]
 
@@ -248,3 +255,9 @@ def execute_slack_notifier(channel: str, message: str) -> Dict[str, Any]:
         except Exception:
             pass
     return {'status': 'logged', 'channel': channel, 'preview': message[:100]}
+
+
+def execute_domain_verifier(url: str) -> Dict[str, Any]:
+    from app.tools.domain_verifier import verify_domain_safely
+    res = verify_domain_safely(url)
+    return res.model_dump()

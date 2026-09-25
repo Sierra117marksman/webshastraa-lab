@@ -2,6 +2,7 @@ import os
 import json
 import uuid
 import logging
+import urllib.parse
 from datetime import datetime
 from typing import Dict, Any, Optional
 from google import genai
@@ -14,7 +15,16 @@ from app.tools.registry import (
     execute_email_sender,
     execute_sheet_logger,
     execute_slack_notifier,
+    execute_domain_verifier,
     TOOLS_METADATA
+)
+from app.tools.domain_verifier import verify_domain_safely
+from app.engine.qualification import (
+    Evidence,
+    LeadField,
+    VerifiedLead,
+    QualificationEngine,
+    OutreachClaimValidator
 )
 from app.engine.gemini_client import generate_content_with_retry
 from app.engine.policy_engine import check_tool_permission
@@ -26,16 +36,22 @@ def get_role_mandate(department: str) -> str:
     if 'CRM' in dep or 'SALES' in dep or 'SDR' in dep:
         return '''
 CRITICAL SDR & LEAD DISCOVERY MANDATE:
-1. PROACTIVE OPPORTUNITY SOURCING:
+1. PROACTIVE MULTI-HOP OPPORTUNITY SOURCING:
    - Your primary mission is to uncover high-value, actionable business leads, contractor/freelance opportunities, client accounts, or active hiring signals matching the prompt.
-   - When calling web_search, use high-signal queries (e.g. keywords like "freelance", "contract", "vibe coder", or specific store directory queries).
-2. ZERO BRAND / URL HALLUCINATION (STRICT LAW):
+   - When calling web_search, use diverse, high-signal queries across 4 research hops: broad discovery, alternate queries, specialized directory reports, and direct company verification.
+2. ZERO BRAND / URL FABRICATION (STRICT LAW):
    - Every single brand, company, or store listed MUST be a real, verified, specific entity with its actual website domain (e.g. [brand.in](https://brand.in) or [store.myshopify.com](https://store.myshopify.com)).
    - NEVER invent fictional brand names (e.g. "Arise Skincare", "Desi Loom", "Nomad Leathercraft") or link to blog articles, accelerator lists, or news posts as a company's website.
-   - If private financial turnover (e.g. ₹10L–₹50L) is requested, explicitly explain that unlisted private brands do not publish revenue publicly, and use verifiable small-store proxies (Store Leads rank ~2M–15M, small product catalog, visible third-party app installations like Wati, Fera, Nudgify, Easysize, Smile.io) with unit economics analysis (~₹80k–₹4L/month).
-3. ENERGETIC & FOUNDER-READY DELIVERABLE:
-   - Never output bureaucratic disclaimers or accounting jargon like "RECOMMEND HOLD".
-   - Deliver clear, actionable intelligence: Executive Market Summary, Opportunities Comparison Table, Deep-Dive Opportunity Cards, and Positioning Strategy.
+3. EPISTEMIC HONESTY & METRIC INTEGRITY (UNKNOWN MUST REMAIN UNKNOWN):
+   - NEVER state unmeasured performance numbers (e.g. "3.5s load time", "4.8s mobile load", "22% bounce rate"). If unmeasured, you MUST write "NOT AUDITED (Requires speed test)".
+   - NEVER invent private turnover or commercial metrics. If private brand does not publish turnover, write "UNVERIFIED (Private entity)" and use verifiable store rank/unit economics proxy.
+   - Never manufacture extra leads to reach the requested quantity. If the founder asks for 10 and only 3 survive verification, RETURN 3 GENUINE LEADS. Accuracy is more important than quantity.
+4. TRI-STATE QUALIFICATION SEMANTICS:
+   - ✅ VERIFIED: Every user-specified hard constraint has direct supporting evidence.
+   - 🟡 PROSPECT / NEEDS QUALIFICATION: Real, relevant business, but one or more hard constraints remain unverified.
+   - 🔴 REJECTED: Contradicted, dead, irrelevant, or invalid.
+5. OUTREACH INTEGRITY LAW:
+   - Never state an unmeasured observation in outreach (e.g. replace "I noticed your site loads in 4.8s" with "I was reviewing your storefront on mobile and noticed several areas we could audit for checkout speed").
 '''
     elif 'HR' in dep or 'HRM' in dep or 'TALENT' in dep:
         return '''
@@ -74,23 +90,23 @@ def get_followup_instructions(department: str) -> str:
         return '''
 Synthesize your findings into a comprehensive, high-impact Lead & Opportunity Dossier:
 1. EXECUTIVE MARKET SUMMARY:
-   - A direct, high-level briefing on the opportunity landscape discovered.
-   - If targeting private revenue bands (e.g. ₹10L–₹50L), address the qualification reality directly (private stores do not disclose exact turnover; explain the proxy methodology using store ranks, app installations, and unit economics: ₹83k–₹4.17L/month, 80–400 orders at ₹1,000 AOV).
+   - High-level briefing on the landscape discovered.
+   - Explicitly separate Verified Data from Unverified Proxies (e.g. private turnover is not public; state the proxy unit economics: ₹83k–₹4L/mo at ₹1k AOV).
 2. STRUCTURED PROSPECT / OPPORTUNITIES TABLE:
-   - MANDATORY QUANTITY RULE: If the prompt requests a specific number of businesses or leads (e.g. "find 10 business", "5 companies"), your table MUST contain AT LEAST that exact number of distinct rows (e.g. exactly 10 verified businesses). Do NOT truncate or stop at 3 or 4.
    - For Brand / Store Prospecting:
-     | # | Brand / Store | Direct Website | Platform & Detected Apps | Store Rank / Size Signal | Key Pain Point / Leak | Founder Pitch Angle |
+     | # | Brand / Store | Direct Website | Platform (Verified/Unverified) | Detected Apps | Revenue Status | Website & UX Status | Lead Status (✅ VERIFIED / 🟡 PROSPECT / 🔴 REJECTED) | Source Citation | Founder Pitch Angle |
    - For Freelance / Contractor Gigs:
-     | # | Company / Client | Role / Project Type | Engagement Model | Location | Compensation / Budget | Why It Fits | Direct Link |
+     | # | Company / Client | Role / Project Type | Engagement Model | Location | Compensation / Budget | Lead Status | Direct Link |
    (Ensure EVERY link is a live clickable markdown link directly to that specific store/job, NOT a general news blog)
+   (Hard Rule: Unknown fields must be labeled UNVERIFIED or NOT AUDITED. If only 3 leads survive verification, list 3. Never invent filler rows.)
 3. DEEP-DIVE PROSPECT TEARDOWNS:
-   For 3 to 4 of the strongest leads discovered, provide:
+   For the strongest leads discovered, provide:
    - Storefront & catalog context
    - Visible technology & app stack (e.g. Nudgify, Wati, Fera, Easysize, Smile.io)
-   - Specific conversion leaks or mobile UX friction points
+   - Specific conversion leaks or mobile UX friction points (clearly labeled as observed hypotheses, not unmeasured load speed facts)
    - Project scope & redesign / automation opportunity
 4. FOUNDER POSITIONING & COLD OUTREACH PLAYBOOK:
-   - The pitch strategy (e.g. do not say "your website is bad"; pitch a 60-second mobile conversion leak audit)
+   - The pitch strategy (e.g. pitch a 60-second mobile conversion leak audit; never claim unmeasured speed numbers)
    - 3-sentence value proposition
    - Complete, ready-to-dispatch personalized cold email draft (To, Subject, Body)
 '''
@@ -191,6 +207,8 @@ def execute_tool_call(tool_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
         return execute_sheet_logger(params.get('table', 'general_records'), params.get('record', {}))
     elif 'slack' in normalized or normalized == 'slack_notifier':
         return execute_slack_notifier(params.get('channel', '#general'), params.get('message', ''))
+    elif 'domain' in normalized or normalized == 'domain_verifier':
+        return execute_domain_verifier(params.get('url', ''))
     return {'error': f'Tool {tool_name} not recognized.'}
 
 MAX_CIRCUIT_BREAKER_STEPS = 3
@@ -334,6 +352,31 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
         if action_type == 'call_tool' and tool_name:
             tools_called.append(tool_name)
             tool_output = execute_tool_call(tool_name, tool_params)
+
+            # Multi-Hop Research Recovery Guard (Solves Failure 1: Premature Stopping)
+            if tool_name == 'web_search' and isinstance(tool_output, dict):
+                results = tool_output.get('results', [])
+                unique_domains = {urllib.parse.urlparse(r.get('url', '')).netloc for r in results if r.get('url')}
+                needs_recovery = len(results) < 3 or len(unique_domains) < 2
+
+                if needs_recovery:
+                    logger.info("[Research Recovery] Hop 1 results sparse or low diversity. Firing Hop 2 & Hop 3 recovery queries...")
+                    orig_q = tool_params.get('query', task_prompt)
+                    # Hop 2: Alternate query formulation
+                    hop2_res = execute_web_search(f"{orig_q} directory listings platform")
+                    # Hop 3: Specialized directory footprint
+                    hop3_res = execute_web_search(f"site:storeleads.app {orig_q}")
+
+                    seen_urls = {r.get('url') for r in results if r.get('url')}
+                    combined_res = list(results)
+                    for r in hop2_res.get('results', []) + hop3_res.get('results', []):
+                        u = r.get('url')
+                        if u and u not in seen_urls:
+                            seen_urls.add(u)
+                            combined_res.append(r)
+                    tool_output['results'] = combined_res[:20]
+                    tool_output['recovery_executed'] = True
+
             record.steps.append({
                 'step_number': 1,
                 'thought': thought,
@@ -475,6 +518,25 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
                     record.final_output = parsed['final_response']
                 elif parsed.get('thought') and parsed.get('action_type') != 'call_tool':
                     record.final_output = parsed['thought']
+
+        # Deterministic Outreach & Metric Validation Pass (Failure 2 fix)
+        if record.final_output and isinstance(record.final_output, str):
+            unverified_ctx = VerifiedLead(
+                company_name="Audit Candidate",
+                website="https://candidate-audit.com",
+                platform=LeadField(status="UNVERIFIED"),
+                apps=LeadField(status="UNVERIFIED"),
+                revenue=LeadField(status="UNVERIFIED"),
+                website_observation=LeadField(status="NOT_AUDITED"),
+                contact=LeadField(status="UNVERIFIED")
+            )
+            sanitized, was_mod, violations = OutreachClaimValidator.validate_and_sanitize_outreach(
+                record.final_output,
+                unverified_ctx
+            )
+            if was_mod:
+                record.final_output = sanitized
+                logger.info(f"[Outreach Validator] Sanitized {len(violations)} unverified performance/bounce claims in deliverable.")
 
         record.status = 'completed'
         record.tokens_used = tokens_in + tokens_out
