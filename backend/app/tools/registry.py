@@ -39,42 +39,87 @@ TOOLS_METADATA = [
     }
 ]
 
-def execute_web_search(query: str) -> Dict[str, Any]:
-    tavily_key = os.getenv('TAVILY_API_KEY')
-    if tavily_key and tavily_key.strip():
-        try:
-            from tavily import TavilyClient
-            client = TavilyClient(api_key=tavily_key.strip())
-            data = client.search(query=query, max_results=6, search_depth='advanced', include_answer=True)
-            results = [
-                {
-                    'title': r.get('title'),
-                    'url': r.get('url'),
-                    'content': (r.get('content') or '')[:450]
-                }
-                for r in data.get('results', [])[:6]
-            ]
-            return {'status': 'success', 'source': 'tavily_live_search', 'direct_answer': data.get('answer'), 'results': results}
-        except Exception:
-            pass
+def _run_tavily_http(api_key: str, q: str, max_results: int = 8) -> Dict[str, Any]:
+    resp = requests.post(
+        'https://api.tavily.com/search',
+        json={
+            'api_key': api_key,
+            'query': q[:380],
+            'search_depth': 'advanced',
+            'include_answer': True,
+            'max_results': max_results
+        },
+        timeout=20
+    )
+    resp.raise_for_status()
+    return resp.json()
 
-    # High-quality fallback search simulator
+
+def execute_web_search(query: str) -> Dict[str, Any]:
+    tavily_key = (os.getenv('TAVILY_API_KEY') or '').strip()
+    if tavily_key:
+        try:
+            seen_urls = set()
+            combined_results = []
+            direct_answers = []
+
+            # Primary search
+            data = _run_tavily_http(tavily_key, query, max_results=7)
+            if data.get('answer'):
+                direct_answers.append(data['answer'])
+            for r in data.get('results', []):
+                url = r.get('url')
+                if url and url not in seen_urls:
+                    seen_urls.add(url)
+                    combined_results.append({
+                        'title': r.get('title'),
+                        'url': url,
+                        'content': (r.get('content') or '')[:900]
+                    })
+
+            # If query is about hiring / freelance / contractors / vibe coding, run a targeted board search too
+            q_lower = query.lower()
+            if any(k in q_lower for k in ['hiring', 'freelance', 'contractor', 'vibe cod', 'mvp', 'careers', 'jobs']):
+                targeted_q = 'hiring "vibe coder" OR "AI builder" OR "Lovable" freelance contract remote careers apply'
+                try:
+                    data2 = _run_tavily_http(tavily_key, targeted_q, max_results=6)
+                    if data2.get('answer'):
+                        direct_answers.append(data2['answer'])
+                    for r in data2.get('results', []):
+                        url = r.get('url')
+                        if url and url not in seen_urls:
+                            seen_urls.add(url)
+                            combined_results.append({
+                                'title': r.get('title'),
+                                'url': url,
+                                'content': (r.get('content') or '')[:900]
+                            })
+                except Exception:
+                    pass
+
+            if combined_results:
+                return {
+                    'status': 'success',
+                    'source': 'tavily_live_search',
+                    'direct_answer': ' | '.join(direct_answers) if direct_answers else None,
+                    'results': combined_results[:12]
+                }
+        except Exception as e:
+            print(f'[Tavily Search Error] {e}')
+
+    # Fallback if no API key configured
     return {
-        'status': 'success',
-        'source': 'web_intelligence_engine',
+        'status': 'warning',
+        'source': 'offline_fallback',
         'results': [
             {
-                'title': f'Intelligence Brief & Market Signals: {query}',
-                'url': f'https://market-intel.global/query/{query.replace(" ", "-").lower()[:30]}',
-                'content': f'Key market findings for "{query}": Rapid growth in autonomous AI agents and automated operational workflows across early-stage startups and enterprise ops in 2026. Companies are adopting agentic SDRs and automated candidate screening.'
-            },
-            {
-                'title': f'Industry Benchmarks & Growth Data: {query}',
-                'url': 'https://techgrowth.benchmarks/report-2026',
-                'content': 'Leading organizations report a 3.4x reduction in outbound response latency and 65% decrease in operational cycle time by utilizing LLM-driven autonomous employees.'
+                'title': f'Live Search Offline for: {query}',
+                'url': 'https://tavily.com',
+                'content': 'Tavily API key is missing or unreachable. Please verify TAVILY_API_KEY in Settings.'
             }
         ]
     }
+
 
 def is_blacklisted_recipient(recipient: str) -> tuple[bool, str]:
     blacklist_raw = os.getenv('BLACKLIST_DOMAINS', 'investor.com,board.com,vip.com,internal.com')

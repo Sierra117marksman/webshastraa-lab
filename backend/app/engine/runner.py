@@ -21,6 +21,99 @@ from app.engine.policy_engine import check_tool_permission
 
 logger = logging.getLogger(__name__)
 
+def get_role_mandate(department: str) -> str:
+    dep = (department or '').upper()
+    if 'CRM' in dep or 'SALES' in dep or 'SDR' in dep:
+        return '''
+CRITICAL SDR & LEAD DISCOVERY MANDATE:
+1. PROACTIVE OPPORTUNITY SOURCING:
+   - Your primary mission is to uncover high-value, actionable business leads, contractor/freelance opportunities, client accounts, or active hiring signals matching the prompt.
+   - When calling web_search, use high-signal queries (e.g. including keywords like "freelance", "contract", "vibe coder", or specific job platforms).
+2. CONCRETE EVIDENCE & PRIMARY SOURCES:
+   - Extract real company names, verified project scopes, engagement models, compensation/budgets, and live markdown links ([Title](URL)) from search results.
+   - Do NOT invent fake companies or broken URLs.
+3. ENERGETIC & FOUNDER-READY DELIVERABLE:
+   - Never output bureaucratic disclaimers or accounting jargon like "RECOMMEND HOLD".
+   - Deliver clear, actionable intelligence: Executive Market Summary, Opportunities Comparison Table, Deep-Dive Opportunity Cards, and Positioning Strategy.
+'''
+    elif 'HR' in dep or 'HRM' in dep or 'TALENT' in dep:
+        return '''
+CRITICAL RECRUITING & TALENT EVALUATION MANDATE:
+1. OBJECTIVE SCORECARD AUDITING:
+   - Evaluate candidates against stated criteria, years of experience, and demonstrable portfolio projects.
+   - Classify candidate profiles into: 🟢 [QUALIFIED], 🟡 [UNVERIFIED], or 🔴 [REJECTED].
+2. ZERO BIAS & DETERMINISTIC VERIFICATION:
+   - Verify stated timelines and tech stacks from primary sources.
+   - Deliver clean candidate comparison matrices and interview preparation dossiers.
+'''
+    elif 'MARKETING' in dep or 'GROWTH' in dep or 'CONTENT' in dep:
+        return '''
+CRITICAL GROWTH & CONTENT INTELLIGENCE MANDATE:
+1. MARKET SIGNAL EXTRACTION:
+   - Identify trending developments, competitive announcements, and technological breakthroughs.
+2. COMPELLING THOUGHT LEADERSHIP:
+   - Produce ready-to-publish hooks, technical breakdowns, and executive commentary tailored for LinkedIn/Twitter.
+   - Maintain high clarity, strong narrative tension, and immediate founder value.
+'''
+    else:  # Operations / Finance / Accounting (David Kim)
+        return '''
+CRITICAL RECONCILIATION & AUDIT MANDATE:
+1. IMMUTABLE TASK CONSTRAINTS:
+   - Preserve contract caps, agreed billing rates, and line-item thresholds strictly.
+2. MATHEMATICAL RECALCULATION & TRI-STATE AUDIT:
+   - Recalculate all billing math deterministically. Classify entries into: 🟢 [PASS], 🔴 [HOLD - Discrepancy], 🟡 [UNVERIFIED].
+3. ACTION AUTHORITY DEMARCATION:
+   - Operate as an audit analyst. Phrase verdicts strictly as "RECOMMEND PASS" or "RECOMMEND HOLD".
+'''
+
+
+def get_followup_instructions(department: str) -> str:
+    dep = (department or '').upper()
+    if 'CRM' in dep or 'SALES' in dep or 'SDR' in dep:
+        return '''
+Synthesize your findings into a comprehensive, high-impact Lead & Opportunity Dossier:
+1. EXECUTIVE MARKET SUMMARY:
+   - A direct, high-level briefing on the opportunity landscape discovered.
+2. STRUCTURED OPPORTUNITIES TABLE:
+   | Company / Client | Role / Project Type | Engagement Model | Location | Compensation / Budget | Why It Fits | Direct Link |
+3. DETAILED OPPORTUNITY CARDS:
+   For each qualified opportunity discovered, provide:
+   - What they are building / Company context
+   - Scope of work & technical / builder requirements
+   - Compensation & terms (hourly, fixed-price, or contract length if disclosed)
+   - Why it is an ideal fit for the founder
+   - Direct clickable markdown link ([View / Apply](url))
+4. FOUNDER POSITIONING & PITCH PLAYBOOK:
+   - How to pitch for these opportunities (exact angle, recommended subject line, and value proposition).
+'''
+    elif 'HR' in dep or 'HRM' in dep or 'TALENT' in dep:
+        return '''
+Synthesize your findings into a Talent Screening & Candidate Audit Dossier:
+1. ROLE SCORECARD & CRITERIA RECAP
+2. CANDIDATE COMPARISON MATRIX:
+   | Status | Candidate | Key Skills | Verified Experience | Scorecard Match | Recommendation |
+3. CANDIDATE PROFILES & EVIDENCE AUDIT
+4. NEXT ACTIONS & INTERVIEW QUESTION BANK
+'''
+    elif 'MARKETING' in dep or 'GROWTH' in dep or 'CONTENT' in dep:
+        return '''
+Synthesize your findings into a Growth & Content Intelligence Brief:
+1. MARKET BREAKTHROUGH SUMMARY
+2. READY-TO-POST CONTENT ARTIFACTS:
+   - 3 distinct storytelling angles (e.g. Case Study, Contrarian Take, Architecture Breakdown)
+3. STRATEGIC POSITIONING TAKEAWAY FOR THE FOUNDER
+'''
+    else:  # Operations / David Kim
+        return '''
+Synthesize your final deliverable adhering strictly to Defensible Audit Standards:
+1. TASK CONSTRAINTS & AUDIT SCOPE
+2. STRUCTURED VERIFICATION TABLE:
+   | Status | Entity / Vendor | Billed Amount | Calculated / Contract Math | Contract Cap | Net Variance | Recommendation |
+3. DETERMINISTIC AUDIT FINDINGS & DISCREPANCIES
+4. VERDICT (Phrase strictly as "RECOMMEND PASS" or "RECOMMEND HOLD")
+'''
+
+
 RUNNER_PROMPT_TEMPLATE = '''
 You are {name}, working as an autonomous {role} in the {department} department.
 Current Calendar Date: {current_date}
@@ -37,66 +130,20 @@ Available Tools:
 Current Task:
 {task_prompt}
 
-CRITICAL RESEARCH & VERIFICATION MANDATE:
-1. IMMUTABLE TASK CONSTRAINT NORMALIZATION:
-   - Preserve the user's constraints exactly. Do NOT widen, reinterpret, substitute, or drift from the requested date range, entity category, financial caps, quantity, or ranking instruction.
-   - At the beginning of your deliverable, output a normalized TASK CONSTRAINTS block tailored to the task:
-     - Entity / Audit Scope: (e.g. AI-agent startups, or September 2026 Vendor Invoices)
-     - Financial / Contractual Scope: (e.g. Series B rounds >$50M, or Contract Caps & Agreed Rates)
-     - Window / Timeline: (Exact dates or submission cycle; never drift or widen)
-     - Result Requirement: (e.g. ALL qualifying companies, or 100% of submitted vendor batch)
-     - Exclusions: (e.g. Acquisitions, unsubmitted accounts, rumors)
-     - Required Audit Fields: (e.g. Company/Vendor, Submitted Amount, Recalculated Math, Contract Cap, Net Variance, Epistemic Status, Recommendation)
-   - Nothing downstream is allowed to modify or widen these constraints!
-
-2. EPISTEMIC TRI-STATE VERIFICATION CLASSIFICATION:
-   Every candidate or audited entity MUST be explicitly classified into one of three definitive states:
-   - 🟢 [QUALIFIED / PASS] — Evidence affirmatively satisfies 100% of immutable constraints and mathematical formulas with primary evidence.
-   - 🔴 [REJECTED / HOLD - <Exact Criterion Failed>] — Demonstrably fails at least one constraint (specify exact reason: e.g. '[REJECTED - Mathematical Error: 20% on $100k base is $20,000, billed $22,500]', '[REJECTED - Contract Cap Overage: Exceeds $20,000 cap by $2,500]', '[REJECTED - Date Out of Window]').
-   - 🟡 [UNVERIFIED - <Reason Incomplete>] — Surfaced in reporting, but retrieved evidence is insufficient/ambiguous to verify all mandatory fields.
-
-3. STRICT EVIDENCE BOUNDARY PROTOCOL (NO FABRICATED VERIFICATION CLAIMS):
-   - Audit and verify ONLY against data and evidence explicitly provided in the prompt or retrieved tools.
-   - NEVER invent or claim to have verified underlying telemetry, logs, or external practices that were not provided (e.g. do NOT assert "usage details are consistent with standard AWS invoicing practices" when no usage logs were provided).
-   - If itemized usage logs or breakdown records are absent, explicitly note: "[Itemized usage records not provided in submission; audit limited strictly to contract cap adherence and stated total]".
-
-4. ACTION AUTHORITY DEMARCATION (RECOMMENDER VS DISBURSER):
-   - AI employees operate as audit and reconciliation analysts, NOT final execution or disbursement authorities.
-   - NEVER state "Approved for immediate payout" or claim to authorize monetary disbursement.
-   - All audit verdicts must be strictly phrased as recommendations:
-     - "RECOMMEND PASS (Eligible for Human Finance Sign-Off)"
-     - "RECOMMEND HOLD (Payment Blocked Pending Revised Invoice)"
-   - Production authority workflow:
-     `AI Recalculates & Verifies` -> `AI Recommends PASS/HOLD` -> `Authorized Human Officer Signs Off` -> `Payment Gateway Disburses`.
-
-5. ZERO CONTACT INFORMATION FABRICATION:
-   - When drafting communications (emails, vendor notices, tickets), NEVER invent email addresses, phone numbers, or domain names (e.g. do NOT fabricate 'billing@apextalent.com' or 'accounts-payable@ourfirm.com' if not provided).
-   - If contact details are not provided in the input context, format them with explicit placeholders:
-     - To: [Vendor Billing Contact: Not Provided in Submission — Requires Manual Entry]
-     - CC: [Internal Finance / AP Contact: Not Provided — Requires Manual Entry]
-
-6. EPISTEMIC HUMILITY ON ZERO RESULTS:
-   - Distinguish "My retrieved evidence did not establish any qualifying items" from an absolute claim that none exist.
-   - If 0 qualify, explicitly state: "In the retrieved evidence, 0 candidates strictly met all immutable constraints. Below is the audited breakdown of candidates discovered, rejected, and unverified."
-
-7. ZERO CITATION / METRIC LAUNDERING:
-   - Never assert unverified quantitative metrics (e.g. '3.4x faster', '65% cycle time reduction') without a named primary source. Recalculate all formulas deterministically.
-
-8. ENTITY PROVENANCE & PRIMARY SOURCES:
-   - When citing funding rounds or research, include markdown links to the primary press release or source URLs retrieved in live search.
+{role_mandate}
 
 CRITICAL TOOL INVOCATION RULE:
-- If the task requires researching live web facts, dates, companies, or events, you MUST set "action_type": "call_tool", "tool_name": "web_search", and provide "tool_params": {{"query": "<specific search keywords>"}}.
+- If the task requires researching live web facts, dates, companies, jobs, or market events, you MUST set "action_type": "call_tool", "tool_name": "web_search", and provide "tool_params": {{"query": "<specific search keywords>"}}.
 - NEVER set "action_type": "finish" with a null or empty "final_response".
 - If finishing, you MUST provide the complete, comprehensive markdown deliverable inside "final_response".
 
 Analyze the task and determine the best action.
 Respond in valid JSON with:
-- "thought": (Your internal reasoning about what to do next based on your SOPs and verification standards)
+- "thought": (Your internal reasoning about what to do next based on your role and SOPs)
 - "action_type": ("call_tool" or "finish")
 - "tool_name": (Name of tool to call, or null if finishing)
 - "tool_params": (Dictionary of tool parameters, or null)
-- "final_response": (If finishing, provide your complete detailed briefing / deliverables for the founder adhering to verification standards)
+- "final_response": (If finishing, provide your complete detailed briefing / deliverable for the founder)
 
 Output ONLY raw parseable JSON. No markdown code blocks.
 '''
@@ -201,7 +248,8 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
         sops_formatted=sops_formatted,
         tools_formatted=tools_formatted,
         memories_section=memories_section,
-        task_prompt=task_prompt
+        task_prompt=task_prompt,
+        role_mandate=get_role_mandate(employee.department)
     )
 
     # ── Audit: dispatch event ─────────────────────────────────────────────────
@@ -286,59 +334,22 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
                 'tool_output': tool_output
             })
 
-            # Secondary pass to synthesize final output adhering to verification standards
+            # Secondary pass to synthesize final output adhering to role standards
+            followup_instructions = get_followup_instructions(employee.department)
             followup_prompt = f'''
             Current Calendar Date: {current_date}
 
             Raw Tool Results / Live Web Intel:
             {json.dumps(tool_output, indent=2)}
 
-            Synthesize your final deliverable adhering strictly to Defensible Research & Audit Standards:
-            1. IMMUTABLE TASK CONSTRAINTS BLOCK:
-               Output an explicit, immutable constraints block at the very beginning of your deliverable:
-               - Entity / Audit Scope: (e.g. AI-agent startups only, or September 2026 Vendor Invoices)
-               - Financial / Contractual Scope: (e.g. Series B only, or Contract Caps & Agreed Rates)
-               - Timeline / Window: (Exact dates or submission cycle; NEVER widen or reinterpret)
-               - Result Scope: (e.g. ALL qualifying items, or 100% of submitted vendor batch)
-               - Exclusions: (Acquisitions, rumors, non-agent tech, unsubmitted accounts)
-               - Required Fields: (e.g. Entity, Math verification, Contract Cap, Net Variance, Epistemic Status, Recommendation)
-
-            2. STRUCTURED VERIFICATION TABLE:
-               | Status | Entity / Vendor | Billed Amount | Calculated / Contract Math | Contract Cap | Net Variance | Recommendation |
-               (List audited items clearly with deterministic math. Mark variance as favorable or overage.)
-
-            3. EPISTEMIC TRI-STATE VERIFICATION & AUDIT LOG:
-               Evaluate and classify EVERY discovered candidate or audited item into:
-               - 🟢 [QUALIFIED / PASS] — Affirmatively satisfies 100% of constraints with primary evidence.
-               - 🔴 [REJECTED / HOLD - <Exact Criterion Failed>] — Demonstrably fails at least one constraint (e.g. mathematical discrepancy, cap overage, date out of window).
-               - 🟡 [UNVERIFIED - <Reason Incomplete>] — Missing essential evidence, documentation, or verifiable telemetry.
-
-            4. STRICT EVIDENCE BOUNDARY PROTOCOL:
-               - Audit only against evidence explicitly provided in the prompt or retrieved tools.
-               - NEVER claim to have checked or verified underlying telemetry, logs, or external practices that were not provided (e.g. do NOT assert "usage details are consistent with standard AWS invoicing practices" when no usage logs were provided).
-               - If itemized usage logs are absent, state: "[Itemized usage records not provided in submission; audit limited strictly to contract cap adherence and stated total]".
-
-            5. ACTION AUTHORITY DEMARCATION (RECOMMENDER VS DISBURSER):
-               - You are an audit and reconciliation analyst, NOT the final payment execution authority.
-               - NEVER state "Approved for immediate payout".
-               - Verdicts must be phrased strictly as:
-                 - "RECOMMEND PASS (Eligible for Human Finance Sign-Off)"
-                 - "RECOMMEND HOLD (Payment Blocked Pending Revised Invoice)"
-
-            6. ZERO CONTACT INFORMATION FABRICATION:
-               - When drafting communications (emails, notices), NEVER invent email addresses (e.g. do not invent 'billing@apextalent.com').
-               - If not provided in input, format as: To: [NOT PROVIDED IN SUBMISSION - REQUIRES MANUAL ENTRY].
-
-            7. EPISTEMIC HUMILITY ON ZERO RESULTS:
-               - Distinguish "My retrieved evidence did not establish any qualifying items" from an absolute claim that none exist.
-
-            8. ZERO CITATION LAUNDERING:
-               - No fabricated metrics or unverified multipliers. All links must be real markdown links to retrieved URLs.
+            {followup_instructions}
 
             Output ONLY valid raw JSON with:
-            - "thought": (Your internal analysis of the findings and verification audit)
-            - "action_type": "finish"
-            - "final_response": (Your complete, exhaustive markdown deliverable for the founder adhering to all verification, provenance, and audit standards)
+            - "thought": (Your internal analysis of the findings)
+            - "action_type": ("finish" or "call_tool" if another targeted search is essential)
+            - "tool_name": (Tool name if calling again, or null)
+            - "tool_params": (Dictionary of params, or null)
+            - "final_response": (If finishing, provide your complete, detailed markdown deliverable for the founder)
             '''
             tokens_in += estimate_tokens(followup_prompt)
             final_res = generate_content_with_retry(
@@ -385,7 +396,8 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
                     record.cost_usd = calculate_task_cost(tokens_in, tokens_out, tools_called)
                     save_task(record)
                     return record
-            elif step2_action == 'call_tool' and step2_tool:
+
+                # Tool is permitted: execute Step 2 tool
                 tools_called.append(step2_tool)
                 step2_out = execute_tool_call(step2_tool, step2_params)
                 record.steps.append({
@@ -397,6 +409,7 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
                 })
 
                 # Step 3: Multi-hop final synthesis from all collected evidence
+                final_instructions = get_followup_instructions(employee.department)
                 final_prompt = f'''
                 Current Calendar Date: {current_date}
 
@@ -407,52 +420,12 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
                 Round 2 Evidence:
                 {json.dumps(step2_out, indent=2)}
 
-                Synthesize your FINAL complete deliverable adhering strictly to Defensible Research & Audit Standards:
-                1. IMMUTABLE TASK CONSTRAINTS BLOCK:
-                   Output an explicit, immutable constraints block at the very beginning of your deliverable:
-                   - Entity / Audit Scope: (e.g. AI-agent startups only, or September 2026 Vendor Invoices)
-                   - Financial / Contractual Scope: (e.g. Series B only, or Contract Caps & Agreed Rates)
-                   - Timeline / Window: (Exact dates or submission cycle; NEVER widen or reinterpret)
-                   - Result Scope: (e.g. ALL qualifying items, or 100% of submitted vendor batch)
-                   - Exclusions: (Acquisitions, rumors, non-agent tech, unsubmitted accounts)
-                   - Required Fields: (e.g. Entity, Math verification, Contract Cap, Net Variance, Epistemic Status, Recommendation)
-
-                2. STRUCTURED VERIFICATION TABLE:
-                   | Status | Entity / Vendor | Billed Amount | Calculated / Contract Math | Contract Cap | Net Variance | Recommendation |
-                   (List audited items clearly with deterministic math. Mark variance as favorable or overage.)
-
-                3. EPISTEMIC TRI-STATE VERIFICATION & AUDIT LOG:
-                   Evaluate and classify EVERY discovered candidate or audited item into:
-                   - 🟢 [QUALIFIED / PASS] — Affirmatively satisfies 100% of constraints with primary evidence.
-                   - 🔴 [REJECTED / HOLD - <Exact Criterion Failed>] — Demonstrably fails at least one constraint (e.g. mathematical discrepancy, cap overage, date out of window).
-                   - 🟡 [UNVERIFIED - <Reason Incomplete>] — Missing essential evidence, documentation, or verifiable telemetry.
-
-                4. STRICT EVIDENCE BOUNDARY PROTOCOL:
-                   - Audit only against evidence explicitly provided in the prompt or retrieved tools.
-                   - NEVER claim to have checked or verified underlying telemetry, logs, or external practices that were not provided (e.g. do NOT assert "usage details are consistent with standard AWS invoicing practices" when no usage logs were provided).
-                   - If itemized usage logs are absent, state: "[Itemized usage records not provided in submission; audit limited strictly to contract cap adherence and stated total]".
-
-                5. ACTION AUTHORITY DEMARCATION (RECOMMENDER VS DISBURSER):
-                   - You are an audit and reconciliation analyst, NOT the final payment execution authority.
-                   - NEVER state "Approved for immediate payout".
-                   - Verdicts must be phrased strictly as:
-                     - "RECOMMEND PASS (Eligible for Human Finance Sign-Off)"
-                     - "RECOMMEND HOLD (Payment Blocked Pending Revised Invoice)"
-
-                6. ZERO CONTACT INFORMATION FABRICATION:
-                   - When drafting communications (emails, notices), NEVER invent email addresses (e.g. do not invent 'billing@apextalent.com').
-                   - If not provided in input, format as: To: [NOT PROVIDED IN SUBMISSION - REQUIRES MANUAL ENTRY].
-
-                7. EPISTEMIC HUMILITY ON ZERO RESULTS:
-                   - Distinguish "My retrieved evidence did not establish any qualifying items" from an absolute claim that none exist.
-
-                8. ZERO CITATION LAUNDERING:
-                   - No fabricated metrics or unverified multipliers. All links must be real markdown links to retrieved URLs.
+                {final_instructions}
 
                 Output ONLY valid raw JSON with:
-                - "thought": (Your final verification audit summary)
+                - "thought": (Your final synthesis thoughts)
                 - "action_type": "finish"
-                - "final_response": (Your complete, exhaustive markdown deliverable for the founder adhering to all verification, provenance, and audit standards)
+                - "final_response": (Your complete, exhaustive markdown deliverable for the founder)
                 '''
                 tokens_in += estimate_tokens(final_prompt)
                 try:
@@ -475,7 +448,7 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
                     logger.error(f"[Runner Step 3 Error] {e}", exc_info=True)
                     record.final_output = step2_plan.get('final_response') or final_res.text
             else:
-                record.final_output = step2_plan.get('final_response') or final_res.text
+                record.final_output = step2_plan.get('final_response') or clean_text
         else:
             record.steps.append({
                 'step_number': 1,
