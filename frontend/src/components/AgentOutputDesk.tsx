@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { TaskRecord, AuditLogEntry, AIEmployeeSpec } from '@/types';
 import ExecutionMonitor from './ExecutionMonitor';
+import MarkdownViewer from './MarkdownViewer';
 
 interface AgentOutputDeskProps {
   employee: AIEmployeeSpec;
@@ -201,8 +202,8 @@ export default function AgentOutputDesk({
                 </p>
               </div>
             ) : activeTask.final_output ? (
-              <div className="bg-[#07090f] rounded-2xl border border-white/[0.06] p-5 sm:p-6 shadow-inner font-sans text-xs text-zinc-200 leading-relaxed space-y-4 whitespace-pre-wrap selection:bg-indigo-500/40">
-                {activeTask.final_output}
+              <div className="bg-[#07090f] rounded-2xl border border-white/[0.06] p-5 sm:p-7 shadow-inner">
+                <MarkdownViewer content={activeTask.final_output} />
               </div>
             ) : (
               <div className="py-12 text-center text-zinc-500 space-y-1">

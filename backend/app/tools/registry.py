@@ -77,7 +77,7 @@ def execute_web_search(query: str) -> Dict[str, Any]:
                         'content': (r.get('content') or '')[:900]
                     })
 
-            # If query is about hiring / freelance / contractors / vibe coding, run a targeted board search too
+            # 2. If query is about hiring / freelance / contractors / vibe coding, run a targeted board search too
             q_lower = query.lower()
             if any(k in q_lower for k in ['hiring', 'freelance', 'contractor', 'vibe cod', 'mvp', 'careers', 'jobs']):
                 targeted_q = 'hiring "vibe coder" OR "AI builder" OR "Lovable" freelance contract remote careers apply'
@@ -97,12 +97,36 @@ def execute_web_search(query: str) -> Dict[str, Any]:
                 except Exception:
                     pass
 
+            # 3. If query is about Shopify / D2C / ecommerce / store leads / app bloat, enrich with verified store technology reports
+            if any(k in q_lower for k in ['shopify', 'd2c', 'ecommerce', 'store', 'brand', 'turnover', 'lakh', 'apps']):
+                store_queries = [
+                    'site:storeleads.app "country/IN" "Wati" OR "Nudgify" OR "Fera" OR "Easysize"',
+                    'site:storeleads.app "country/IN" "Judge.me" OR "Loox" OR "Smile.io"',
+                    'site:storeleads.app "reports/shopify/IN" "Domain" "Rank"'
+                ]
+                for sq in store_queries:
+                    try:
+                        data_sq = _run_tavily_http(tavily_key, sq, max_results=5)
+                        if data_sq.get('answer'):
+                            direct_answers.append(data_sq['answer'])
+                        for r in data_sq.get('results', []):
+                            url = r.get('url')
+                            if url and url not in seen_urls:
+                                seen_urls.add(url)
+                                combined_results.append({
+                                    'title': r.get('title'),
+                                    'url': url,
+                                    'content': (r.get('content') or '')[:900]
+                                })
+                    except Exception:
+                        pass
+
             if combined_results:
                 return {
                     'status': 'success',
                     'source': 'tavily_live_search',
                     'direct_answer': ' | '.join(direct_answers) if direct_answers else None,
-                    'results': combined_results[:12]
+                    'results': combined_results[:18]
                 }
         except Exception as e:
             print(f'[Tavily Search Error] {e}')
