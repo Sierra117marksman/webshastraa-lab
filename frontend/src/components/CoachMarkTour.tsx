@@ -18,7 +18,7 @@ export interface TourStep {
   id: string;
   title: string;
   description: string;
-  tab?: 'hire' | 'roster' | 'feed' | 'settings';
+  tab?: 'studio' | 'hire' | 'roster' | 'feed' | 'settings';
   targetId?: string;
   icon: React.ElementType;
   badge: string;
@@ -27,7 +27,7 @@ export interface TourStep {
 interface CoachMarkTourProps {
   isOpen: boolean;
   onClose: () => void;
-  setActiveTab: (tab: 'hire' | 'roster' | 'feed' | 'settings') => void;
+  setActiveTab: (tab: any) => void;
 }
 
 const TOUR_STEPS: TourStep[] = [
@@ -40,33 +40,24 @@ const TOUR_STEPS: TourStep[] = [
     icon: Bot
   },
   {
-    id: 'telemetry',
-    title: 'Founder ROI & Value Telemetry',
+    id: 'studio',
+    title: 'AI Employee Studio',
     description:
-      'Real-time tracking of hours saved (benchmarked against human virtual assistants), net dollar value created, and exact micro-API compute burn (~$0.0004 per task) ensuring 99.9% margin.',
-    targetId: 'tour-telemetry',
-    badge: 'Cost & Margin Guard',
-    icon: Zap
-  },
-  {
-    id: 'roster',
-    title: 'Digital Workforce Roster',
-    description:
-      'View your specialized digital employees. Inspect their 5 Standard Operating Procedures (SOPs), safety gates, and dispatch custom missions on demand.',
-    tab: 'roster',
-    targetId: 'tour-roster',
-    badge: 'Digital Team',
-    icon: Users
+      'Everything on one unified screen: Pick an agent on the left, watch live results & approve emails in the center, and use the Guided Recipe Builder or type freely at the bottom.',
+    tab: 'studio',
+    targetId: 'tour-studio',
+    badge: 'Unified Studio',
+    icon: Sparkles
   },
   {
     id: 'hire',
     title: 'Hire Studio & Prompt Compiler',
     description:
-      'Enter your requirement in natural language or load a production blueprint. Gemini 3.6 Flash synthesizes identity, SOP checklists, live tool bindings, and safety gates.',
+      'Enter your requirement in natural language or load a production blueprint. Gemini 3.8 Flash synthesizes identity, SOP checklists, live tool bindings, and safety gates.',
     tab: 'hire',
     targetId: 'tour-hire',
     badge: 'Meta-Agent',
-    icon: Sparkles
+    icon: Users
   },
   {
     id: 'approvals',

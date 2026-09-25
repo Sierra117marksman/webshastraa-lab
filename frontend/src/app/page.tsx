@@ -12,12 +12,13 @@ import CoachMarkTour from '@/components/CoachMarkTour';
 import CommandCenter from '@/components/CommandCenter';
 import FloorplanView from '@/components/FloorplanView';
 import OfficeView from '@/components/OfficeView';
+import UnifiedStudio from '@/components/UnifiedStudio';
 import { AIEmployeeSpec, TaskRecord, SettingsState, AnalyticsData, TodayStats } from '@/types';
 
 const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('floorplan');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('studio');
   const [selectedEmployee, setSelectedEmployee] = useState<AIEmployeeSpec | null>(null);
   const [employees, setEmployees] = useState<AIEmployeeSpec[]>([]);
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
@@ -125,7 +126,7 @@ export default function Home() {
       });
       if (res.ok) {
         await fetchData();
-        if (activeTab !== 'office') {
+        if (activeTab !== 'office' && activeTab !== 'studio') {
           setActiveTab('feed');
         }
       }
@@ -278,9 +279,21 @@ export default function Home() {
           </div>
         )}
 
-        <main className="flex-1 p-4 sm:p-6 md:p-10 max-w-7xl w-full mx-auto">
-          {/* Executive Telemetry & Value Creation Strip (hidden inside individual offices) */}
-          {activeTab !== 'office' && <RoiTelemetry analytics={analytics} />}
+        <main className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl w-full mx-auto">
+          {/* Executive Telemetry Strip (hidden inside studio or office) */}
+          {activeTab !== 'office' && activeTab !== 'studio' && <RoiTelemetry analytics={analytics} />}
+
+          {activeTab === 'studio' && (
+            <UnifiedStudio
+              employees={employees}
+              tasks={tasks}
+              apiBase={apiBase}
+              activeEmailSender={settings.active_email_sender}
+              onDispatch={handleDispatch}
+              onApprove={handleApprove}
+              dispatchingId={dispatchingId}
+            />
+          )}
 
           {activeTab === 'hq' && (
             <CommandCenter

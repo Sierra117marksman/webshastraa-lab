@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { SettingsState } from '@/types';
 
-export type ActiveTab = 'hq' | 'floorplan' | 'office' | 'hire' | 'roster' | 'feed' | 'settings';
+export type ActiveTab = 'studio' | 'hq' | 'floorplan' | 'office' | 'hire' | 'roster' | 'feed' | 'settings';
 
 interface SidebarProps {
   activeTab: ActiveTab;
@@ -42,40 +42,41 @@ export default function Sidebar({
   onClose,
   onStartTour
 }: SidebarProps) {
-  const navItems = [
+  const navItems: {
+    id: ActiveTab;
+    label: string;
+    icon: React.ElementType;
+    tag?: string;
+    count?: number;
+    alert?: number | null;
+  }[] = [
     {
-      id: 'hq' as const,
-      label: 'Command Center',
-      icon: Activity,
-      tag: 'Today'
-    },
-    {
-      id: 'floorplan' as const,
-      label: 'Virtual Floorplan',
-      icon: LayoutGrid,
-      count: employeeCount
-    },
-    {
-      id: 'hire' as const,
-      label: 'Hire Studio',
+      id: 'studio',
+      label: 'AI Employee Studio',
       icon: Sparkles,
-      tag: 'Compiler'
+      tag: 'Main'
     },
     {
-      id: 'roster' as const,
-      label: 'Digital Workforce',
-      icon: Users,
-      count: employeeCount
-    },
-    {
-      id: 'feed' as const,
-      label: 'Execution & Approvals',
+      id: 'feed',
+      label: 'Approvals & History',
       icon: BarChart3,
       alert: pendingApprovalsCount > 0 ? pendingApprovalsCount : null
     },
     {
-      id: 'settings' as const,
-      label: 'Integrations & Hub',
+      id: 'hq',
+      label: 'Daily Telemetry',
+      icon: Activity,
+      tag: 'Stats'
+    },
+    {
+      id: 'hire',
+      label: 'Hire New AI',
+      icon: Users,
+      count: employeeCount
+    },
+    {
+      id: 'settings',
+      label: 'Settings & Keys',
       icon: KeyRound,
       tag: settings.tavily_connected ? 'Connected' : 'Setup'
     }
@@ -116,7 +117,7 @@ export default function Sidebar({
         {/* Workspace Card */}
         <div
           onClick={() => {
-            setActiveTab('roster');
+            setActiveTab('studio');
             if (onClose) onClose();
           }}
           className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-between group hover:bg-white/[0.05] transition cursor-pointer"
@@ -213,7 +214,7 @@ export default function Sidebar({
         <div className="space-y-2 text-[11px]">
           <div className="flex items-center justify-between text-zinc-400">
             <span className="flex items-center gap-1.5">
-              <Zap className="w-3.5 h-3.5 text-indigo-400" /> Gemini 3.6 Flash
+              <Zap className="w-3.5 h-3.5 text-indigo-400" /> Gemini 3.8 Flash
             </span>
             <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-500/50" />
           </div>
