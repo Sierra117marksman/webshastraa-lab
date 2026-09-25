@@ -20,6 +20,7 @@ import { AIEmployeeSpec, TaskRecord, AuditLogEntry } from '@/types';
 import ExecutionMonitor from './ExecutionMonitor';
 import MemoryVault from './MemoryVault';
 import PermissionPanel from './PermissionPanel';
+import AgentOutputDesk from './AgentOutputDesk';
 
 interface OfficeViewProps {
   employee: AIEmployeeSpec;
@@ -242,24 +243,12 @@ export default function OfficeView({
             </div>
           </div>
 
-          {/* Zone 3: Execution Monitor */}
-          {latestTask ? (
-            <div className="rounded-3xl border border-white/[0.08] bg-[#0c101c]/80 backdrop-blur-xl p-6 shadow-xl space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-white/[0.06]">
-                <span className="text-xs font-bold text-zinc-300 uppercase tracking-wider flex items-center gap-2">
-                  <Terminal className="w-4 h-4 text-indigo-400" /> Execution Monitor
-                </span>
-                <span className="text-[11px] text-zinc-500 font-mono">Task: {latestTask.id}</span>
-              </div>
-              <ExecutionMonitor task={latestTask} auditLog={auditLog} />
-            </div>
-          ) : (
-            <div className="rounded-3xl border border-white/[0.08] bg-[#0c101c]/80 p-8 text-center space-y-2">
-              <Terminal className="w-8 h-8 text-zinc-600 mx-auto" />
-              <p className="text-xs text-zinc-400 font-semibold">No Tasks Executed Yet</p>
-              <p className="text-[11px] text-zinc-500">Dispatch a task from the console to monitor live actions and guardrails.</p>
-            </div>
-          )}
+          {/* Zone 3: Agent Output & Deliverable Screen */}
+          <AgentOutputDesk
+            employee={employee}
+            tasks={tasks}
+            auditLog={auditLog}
+          />
 
           {/* Zone 5: Memory Vault */}
           <MemoryVault employeeId={employee.id} apiBase={apiBase} />
