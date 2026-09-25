@@ -6,7 +6,7 @@ from google import genai
 
 logger = logging.getLogger(__name__)
 
-FALLBACK_MODELS = ['gemini-3.5-flash', 'gemini-flash-latest', 'gemini-3.5-flash-lite', 'gemini-3.7-flash', 'gemini-3.6-flash']
+FALLBACK_MODELS = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash']
 GROQ_MODELS = ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'openai/gpt-oss-20b']
 
 class LLMResponse:
@@ -45,7 +45,7 @@ def _try_groq_inference(contents: List[Dict[str, Any]]) -> Optional[LLMResponse]
                 )
                 output = res.choices[0].message.content or ''
                 elapsed = time.time() - t0
-                logger.info(f"[Groq LPU] Finished in {elapsed:.2f}s via {model} (Length: {len(output)})")
+                logger.info(f"[Groq LPU] Fallback inference finished in {elapsed:.2f}s via {model} (Length: {len(output)})")
                 return LLMResponse(output)
             except Exception as ge:
                 logger.warning(f"[Groq Error] Model {model} failed ({str(ge)[:90]}). Trying next...")
@@ -57,26 +57,21 @@ def _try_groq_inference(contents: List[Dict[str, Any]]) -> Optional[LLMResponse]
 
 def generate_content_with_retry(
     client: genai.Client,
-    model: str = 'gemini-3.5-flash',
+    model: str = 'gemini-3.8-flash',
     contents: List[Dict[str, Any]] = None,
     max_retries: int = 2,
     initial_delay: float = 1.5
 ) -> Any:
     """
     Executes LLM content generation with multi-provider failover:
-    1. Primary: Groq LPU (Ultra-fast, high request limits)
-    2. Fallback: Google Gemini cascade across 5 production models
+    1. Primary: Google Gemini 3.8 Flash (with cascade across latest 3.x Flash models)
+    2. Fallback: Groq LPU engine if Gemini hits quota (429) or transient outage
     """
-    # 1. Attempt Groq first if key is present
-    groq_res = _try_groq_inference(contents)
-    if groq_res is not None and groq_res.text:
-        return groq_res
-
-    # 2. Fallback to Gemini Cascade
-    logger.info("[LLM Engine] Running via Google Gemini cascade...")
+    logger.info(f"[LLM Engine] Running primary inference via Google Gemini ({model})...")
     models_to_try = [model] + [m for m in FALLBACK_MODELS if m != model]
     last_error = None
 
+    # 1. Primary: Attempt Google Gemini 3.8 Flash & cascade
     for current_model in models_to_try:
         delay = initial_delay
         for attempt in range(1, max_retries + 1):
@@ -102,5 +97,14 @@ def generate_content_with_retry(
                 else:
                     break
 
+    # 2. Fallback: If Gemini cascade failed or exhausted quota, switch to Groq LPU
+    logger.warning(f"[LLM Engine] Gemini models exhausted/failed ({last_error}). Falling back to Groq LPU...")
+    groq_res = _try_groq_inference(contents)
+    if groq_res is not None and groq_res.text:
+        logger.info("[LLM Engine] Successfully recovered via Groq LPU fallback.")
+        return groq_res
+
+    # If both Gemini and Groq fail, raise last error
     raise last_error
+
 

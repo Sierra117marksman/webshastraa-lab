@@ -32,7 +32,7 @@ def compile_prompt_to_employee(user_prompt: str) -> AIEmployeeSpec:
     
     response = generate_content_with_retry(
         client=client,
-        model='gemini-3.5-flash',
+        model='gemini-3.8-flash',
         contents=[
             {'role': 'user', 'parts': [{'text': f'{COMPILER_SYSTEM_INSTRUCTION}\n\nFounder Prompt: {user_prompt}'}]}
         ]

@@ -276,7 +276,7 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
     try:
         response = generate_content_with_retry(
             client=client,
-            model='gemini-3.5-flash',
+            model='gemini-3.8-flash',
             contents=[{'role': 'user', 'parts': [{'text': prompt}]}]
         )
 
@@ -362,7 +362,7 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
             tokens_in += estimate_tokens(followup_prompt)
             final_res = generate_content_with_retry(
                 client=client,
-                model='gemini-3.5-flash',
+                model='gemini-3.8-flash',
                 contents=[
                     {'role': 'user', 'parts': [{'text': prompt}]},
                     {'role': 'model', 'parts': [{'text': raw_text}]},
@@ -439,7 +439,7 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
                 try:
                     step3_res = generate_content_with_retry(
                         client=client,
-                        model='gemini-3.5-flash',
+                        model='gemini-3.8-flash',
                         contents=[
                             {'role': 'user', 'parts': [{'text': prompt}]},
                             {'role': 'model', 'parts': [{'text': raw_text}]},

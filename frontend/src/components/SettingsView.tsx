@@ -123,8 +123,34 @@ export default function SettingsView({ settings, onSave, apiBase = 'http://127.0
           </div>
         </div>
 
-        {/* Groq High-Speed LPU Card */}
-        <div className="rounded-2xl border border-amber-500/20 bg-[#0a0d14]/80 p-6 space-y-4 shadow-xl">
+        {/* Gemini Engine Card (Primary) */}
+        <div className="rounded-2xl border border-indigo-500/20 bg-[#0a0d14]/80 p-6 space-y-4 shadow-xl order-1">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+                <Zap className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  Google Gemini 3.8 Flash
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-mono">Primary Engine</span>
+                </h3>
+                <p className="text-xs text-zinc-400">Primary deep reasoning model & Prompt-to-SOP compiler with Gemini 3.x cascade</p>
+              </div>
+            </div>
+            <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              Online & Primary
+            </span>
+          </div>
+          <div className="text-xs text-zinc-400 bg-black/30 p-3 rounded-xl border border-white/[0.04] flex items-center justify-between font-mono">
+            <span>Model: models/gemini-3.8-flash</span>
+            <span className="text-emerald-400">Default inference route</span>
+          </div>
+        </div>
+
+        {/* Groq High-Speed LPU Card (Fallback) */}
+        <div className="rounded-2xl border border-amber-500/20 bg-[#0a0d14]/80 p-6 space-y-4 shadow-xl order-2">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
@@ -133,9 +159,9 @@ export default function SettingsView({ settings, onSave, apiBase = 'http://127.0
               <div>
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
                   Groq High-Speed LPU Engine
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono">0.5s Latency</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono">Fallback Tier</span>
                 </h3>
-                <p className="text-xs text-zinc-400">Ultra-fast inference (14,400 daily requests) with automatic Gemini fallback</p>
+                <p className="text-xs text-zinc-400">Automatic ultra-fast fallback (14,400 daily requests) when Gemini reaches quota</p>
               </div>
             </div>
             <span
@@ -146,7 +172,7 @@ export default function SettingsView({ settings, onSave, apiBase = 'http://127.0
               }`}
             >
               <span className={`w-2 h-2 rounded-full ${settings.groq_connected ? 'bg-emerald-400' : 'bg-zinc-500'}`} />
-              {settings.groq_connected ? 'Active & High-Speed' : 'Not Configured'}
+              {settings.groq_connected ? 'Standby Fallback Ready' : 'Not Configured'}
             </span>
           </div>
 
@@ -154,11 +180,11 @@ export default function SettingsView({ settings, onSave, apiBase = 'http://127.0
             <div className="flex items-center justify-between text-zinc-300">
               <span>Active Groq Key:</span>
               <span className="font-mono text-amber-400 font-bold">
-                {settings.groq_connected ? `Verified (${settings.groq_key_preview || 'gsk_...'})` : 'None (Using Gemini)'}
+                {settings.groq_connected ? `Verified (${settings.groq_key_preview || 'gsk_...'})` : 'None'}
               </span>
             </div>
             <div className="flex items-center justify-between text-zinc-400 text-[11px] pt-2 border-t border-white/[0.06]">
-              <span>Get your free Groq API key (instant setup)</span>
+              <span>Get your free Groq API key for zero-downtime failover</span>
               <a
                 href="https://console.groq.com/keys"
                 target="_blank"
@@ -179,29 +205,6 @@ export default function SettingsView({ settings, onSave, apiBase = 'http://127.0
               placeholder="gsk_..."
               className="w-full px-3 py-2 text-xs rounded-xl bg-black/40 border border-white/[0.08] text-white focus:outline-none focus:border-amber-500 font-mono"
             />
-          </div>
-        </div>
-
-        {/* Gemini Engine Card */}
-        <div className="rounded-2xl border border-white/[0.08] bg-[#0a0d14]/80 p-6 space-y-4 shadow-xl">
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
-                <Zap className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-white">Google Gemini 3.6 Flash</h3>
-                <p className="text-xs text-zinc-400">Primary reasoning model & Prompt-to-SOP compiler</p>
-              </div>
-            </div>
-            <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              Online & Authenticated
-            </span>
-          </div>
-          <div className="text-xs text-zinc-400 bg-black/30 p-3 rounded-xl border border-white/[0.04] flex items-center justify-between font-mono">
-            <span>Project ID: 131356690224</span>
-            <span className="text-emerald-400">Low-latency streaming active</span>
           </div>
         </div>
 
