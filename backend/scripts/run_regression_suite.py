@@ -14,6 +14,9 @@ import os
 import sys
 import uuid
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 # Ensure backend root is on sys.path
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BACKEND_DIR not in sys.path:
@@ -341,6 +344,93 @@ def run_suite():
         "Test 25: Outreach validator intercepts and sanitizes unmeasured speed & bounce claims",
         was_modified is True and "3.5" not in sanitized_mail and "25%" not in sanitized_mail,
         f"Modified: {was_modified}, Violations: {len(violations)}, Output: '{sanitized_mail}'"
+    )
+
+    # -------------------------------------------------------------------------
+    # 8. Maya v2 State Machine, Candidate Ledger & Evidence Store (Tests 26–30)
+    # -------------------------------------------------------------------------
+    from app.agents.schemas.evidence import EvidenceStore
+    from app.agents.schemas.claim import Claim
+    from app.agents.schemas.candidate import CandidateLedger
+    from app.agents.employees.maya.planner import MayaPlanner
+    from app.agents.employees.maya.qualifier import MayaQualifier
+    from app.agents.employees.maya.claim_validator import MayaClaimValidator
+
+    # Test 26: ResearchSession Termination Rules Owned by Python (Not LLM)
+    sess = MayaPlanner.create_session(
+        "task_test26",
+        "find 10 business that have turn over of 10 lakh to 50 lakhs per year in D2C brand and have old carppy website on shopify paying in apps"
+    )
+    sess.current_hop = 2
+    can_continue_hop2 = sess.should_continue_discovery(viable_count=3)
+    sess.current_hop = 4
+    can_continue_hop4 = sess.should_continue_discovery(viable_count=3)
+    check(
+        "Test 26: ResearchSession forces continuation at Hop 2 (3/10 leads) and terminates at Max Hop 4 as 'exhausted'",
+        can_continue_hop2 is True and can_continue_hop4 is False and sess.status == "exhausted",
+        f"Hop2 continue: {can_continue_hop2}, Hop4 continue: {can_continue_hop4}, Status: {sess.status}"
+    )
+
+    # Test 27: Candidate Ledger Field-Specific Evidence Binding
+    ev_store = EvidenceStore()
+    ledger = CandidateLedger()
+    c1 = ledger.upsert_candidate(
+        company_name="Velnoir",
+        canonical_domain="velnoir-7.myshopify.com",
+        url="https://velnoir-7.myshopify.com",
+        discovered_from="https://storeleads.app/reports/shopify/IN",
+        discovery_hop=1
+    )
+    e1 = ev_store.add_evidence(
+        candidate_id=c1.id,
+        source_url="https://velnoir-7.myshopify.com",
+        source_type="live_html_footprint",
+        supports_field="platform",
+        supports_claim="Shopify",
+        content_excerpt="Shopify.theme and cdn.shopify.com detected in HTML"
+    )
+    e2 = ev_store.add_evidence(
+        candidate_id=c1.id,
+        source_url="https://velnoir-7.myshopify.com",
+        source_type="live_html_footprint",
+        supports_field="apps",
+        supports_claim="Nudgify",
+        content_excerpt="nudgify.com script injected in head"
+    )
+    c1.website = Claim(field="website", value="https://velnoir-7.myshopify.com", evidence_ids=[e1.id], status="SUPPORTED")
+    c1.platform = Claim(field="platform", value="Shopify", evidence_ids=[e1.id], status="SUPPORTED")
+    c1.apps = Claim(field="apps", value="Nudgify", evidence_ids=[e2.id], status="SUPPORTED")
+    c1.audited_by_verifier = True
+    check(
+        "Test 27: Candidate Ledger preserves field-specific evidence while keeping revenue UNVERIFIED and speed NOT_AUDITED",
+        c1.platform.status == "SUPPORTED" and c1.revenue.status == "UNVERIFIED" and c1.website_condition.status == "NOT_AUDITED",
+        f"Platform: {c1.platform.status}, Revenue: {c1.revenue.status}, Condition: {c1.website_condition.status}"
+    )
+
+    # Test 28: Structured ClaimValidator Rejects Claim Not Supported by Evidence Excerpt
+    bogus_claim = Claim(field="platform", value="WooCommerce", evidence_ids=[e1.id], status="SUPPORTED")
+    is_valid_claim, claim_reason = MayaClaimValidator.validate_structured_claim(c1.id, bogus_claim, ev_store)
+    check(
+        "Test 28: MayaClaimValidator rejects SUPPORTED claim when Evidence E1 excerpt ('Shopify') contradicts 'WooCommerce'",
+        is_valid_claim is False and bogus_claim.status == "UNVERIFIED",
+        f"Valid: {is_valid_claim}, Downgraded status: {bogus_claim.status}"
+    )
+
+    # Test 29: Allowed Outreach Claims Whitelist Excludes Unverified Revenue & Unaudited Speed
+    allowed_claims = MayaClaimValidator.build_allowed_outreach_claims(c1, ev_store)
+    allowed_fields = {ac["field"] for ac in allowed_claims}
+    check(
+        "Test 29: Outreach Composer input whitelist contains ONLY supported fields (excludes revenue & website_condition)",
+        "platform" in allowed_fields and "apps" in allowed_fields and "revenue" not in allowed_fields and "website_condition" not in allowed_fields,
+        f"Allowed fields: {allowed_fields}"
+    )
+
+    # Test 30: MayaQualifier Classifies Verified Shopify+Apps Brand as PROSPECT When Private Revenue is Requested
+    MayaQualifier.qualify_candidate(c1, sess, ev_store)
+    check(
+        "Test 30: MayaQualifier classifies candidate as PROSPECT (not VERIFIED) when private ₹10L–₹50L turnover is unverified",
+        c1.qualification_status == "PROSPECT",
+        f"Qualification status: {c1.qualification_status}, Reasons: {c1.qualification_reasons}"
     )
 
     # Summary Output

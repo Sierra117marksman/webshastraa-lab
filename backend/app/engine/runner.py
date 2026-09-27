@@ -292,6 +292,18 @@ def run_employee_task(employee: AIEmployeeSpec, task_prompt: str) -> TaskRecord:
     tokens_out = 0
 
     try:
+        # ── Maya v2 Reference Architecture (State Machine + Candidate Ledger + Evidence Store) ──
+        dep_upper = (employee.department or '').upper()
+        is_direct_email_only = ('@' in task_prompt and any(w in task_prompt.lower() for w in ['send email to', 'email to']))
+        if ('CRM' in dep_upper or 'SALES' in dep_upper or 'SDR' in dep_upper) and not is_direct_email_only:
+            from app.agents.core.state_machine import MayaStateMachine
+            return MayaStateMachine.run(
+                employee=employee,
+                record=record,
+                task_prompt=task_prompt,
+                llm_client=client
+            )
+
         response = generate_content_with_retry(
             client=client,
             model='gemini-3.8-flash',
