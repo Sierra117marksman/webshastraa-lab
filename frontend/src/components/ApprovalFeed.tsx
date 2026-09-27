@@ -65,19 +65,38 @@ export default function ApprovalFeed({
                 className="rounded-3xl border-2 border-amber-500/40 bg-gradient-to-b from-amber-950/20 via-[#0e111a] to-[#07090e] p-6 space-y-5 shadow-2xl shadow-amber-950/20 ring-1 ring-amber-500/20"
               >
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                  <div>
+                  <div className="space-y-1.5">
                     <div className="flex items-center gap-2">
-                      <h4 className="font-extrabold text-white text-base">{task.employee_name}</h4>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase tracking-wider">
-                        Action Hold
+                      <span className="text-[11px] font-black px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase tracking-wider">
+                        ⚠ APPROVAL REQUIRED
                       </span>
+                      <h4 className="font-extrabold text-white text-base">{task.employee_name}</h4>
                     </div>
-                    <p className="text-xs text-zinc-300 mt-1">
+                    {task.pending_action?.company_name && (
+                      <div className="text-sm text-zinc-200">
+                        {task.employee_name.split(' ')[0]} wants to send outreach to:{' '}
+                        <strong className="text-white font-black">{task.pending_action.company_name}</strong>
+                        {task.pending_action.canonical_domain && (
+                          <span className="text-xs font-mono text-zinc-400 ml-1">
+                            ({task.pending_action.canonical_domain})
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <p className="text-xs text-zinc-400">
                       Assigned Mission: &quot;{task.task_prompt}&quot;
                     </p>
                   </div>
 
                   <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onApprove(task.id, true)}
+                      className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-600/25 transition active:scale-95 cursor-pointer"
+                    >
+                      <Mail className="w-3.5 h-3.5" />
+                      <span>Approve</span>
+                    </button>
                     <button
                       type="button"
                       onClick={() => onApprove(task.id, false)}
@@ -86,33 +105,37 @@ export default function ApprovalFeed({
                       <X className="w-3.5 h-3.5" />
                       <span>Reject</span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => onApprove(task.id, true)}
-                      className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-600/25 transition active:scale-95 cursor-pointer"
-                    >
-                      <Mail className="w-3.5 h-3.5" />
-                      <span>Authorize & Send via Gmail</span>
-                    </button>
                   </div>
                 </div>
 
                 {/* Email Dispatch Preview Box */}
                 {task.pending_action && (
                   <div className="rounded-2xl bg-black/60 border border-amber-500/20 p-4 space-y-3 text-xs">
-                    <div className="flex items-center justify-between text-amber-300 font-semibold border-b border-white/[0.06] pb-2">
-                      <span className="flex items-center gap-1.5">
-                        <ShieldCheck className="w-4 h-4 text-amber-400" />
-                        <span>Proposed Action: {task.pending_action.tool_name}</span>
-                      </span>
-                      <span className="text-[11px] text-zinc-400 font-mono">
-                        via {activeEmailSender} (Port 465 SSL)
-                      </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 font-mono text-xs pb-2 border-b border-white/[0.06]">
+                      <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] px-3 py-2">
+                        <span className="text-[10px] text-zinc-500 uppercase block">Action</span>
+                        <strong className="text-amber-300">
+                          {task.pending_action.action || (task.pending_action.tool_name === 'email_sender' ? 'SEND_EMAIL' : task.pending_action.tool_name.toUpperCase())}
+                        </strong>
+                      </div>
+                      <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] px-3 py-2">
+                        <span className="text-[10px] text-zinc-500 uppercase block">Permission</span>
+                        <strong className="text-indigo-300">{task.pending_action.permission || 'REQUEST'}</strong>
+                      </div>
+                      <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] px-3 py-2">
+                        <span className="text-[10px] text-zinc-500 uppercase block">Reason</span>
+                        <strong className="text-zinc-200">{task.pending_action.reason || 'External side effect'}</strong>
+                      </div>
                     </div>
 
-                    <div className="text-zinc-300 text-[11px]">
-                      <span className="text-zinc-500 font-medium">Internal SOP Rationale: </span>
-                      {task.pending_action.explanation}
+                    <div className="flex items-center justify-between text-amber-300 font-semibold text-[11px]">
+                      <span className="flex items-center gap-1.5">
+                        <ShieldCheck className="w-4 h-4 text-amber-400" />
+                        <span>{task.pending_action.explanation}</span>
+                      </span>
+                      <span className="text-[11px] text-zinc-400 font-mono">
+                        via {activeEmailSender}
+                      </span>
                     </div>
 
                     {/* Email Card Preview */}

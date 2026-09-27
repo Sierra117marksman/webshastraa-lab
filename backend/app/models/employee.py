@@ -6,7 +6,7 @@ class ToolDefinition(BaseModel):
     id: str
     name: str
     description: str
-    requires_approval: bool = False
+    parameters: Optional[Dict[str, str]] = None
 
 class AIEmployeeSpec(BaseModel):
     id: str
@@ -23,6 +23,7 @@ class AIEmployeeSpec(BaseModel):
     schedule_interval_mins: Optional[int] = None
     requires_approval_for: List[str] = Field(default_factory=list)
     status: str = 'active'
+    config_version: int = 1
     created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
 
 class CompilePromptRequest(BaseModel):
@@ -47,8 +48,10 @@ class TaskRecord(BaseModel):
     id: str
     employee_id: str
     employee_name: str
+    session_id: Optional[str] = None
     task_prompt: str
-    status: str = 'pending'  # pending, running, waiting_approval, completed, failed
+    status: str = 'pending'  # pending, running, waiting_approval, completed, failed, rejected, needs_clarification
+    resume_state: Optional[str] = None
     steps: List[Dict[str, Any]] = Field(default_factory=list)
     pending_action: Optional[Dict[str, Any]] = None
     final_output: Optional[str] = None

@@ -1,4 +1,4 @@
-﻿# Virtual Environments
+# Virtual Environments
 .venv/
 venv/
 ENV/
@@ -13,8 +13,9 @@ ENV/
 __pycache__/
 *.py[cod]
 *.class
-*.sqlite3
-*.db
+*.sqlite*
+*.db*
+*.bak
 
 # Node / Next.js
 node_modules/

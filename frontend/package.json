@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "prebuild": "npm run lint",
+    "build": "npm run lint && next build",
     "start": "next start",
     "lint": "eslint . --max-warnings 0"
   },

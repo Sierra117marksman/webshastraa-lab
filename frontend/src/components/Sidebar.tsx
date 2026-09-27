@@ -14,7 +14,6 @@ import {
   ShieldCheck,
   Compass,
   X,
-  LayoutGrid,
   Activity
 } from 'lucide-react';
 import { SettingsState } from '@/types';

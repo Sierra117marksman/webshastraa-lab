@@ -1,8 +1,34 @@
-from typing import Any, Dict, List, Literal
-from pydantic import BaseModel, Field
+"""Typed ResearchSession schema with forward-only hop transitions and locked approval resume."""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Literal, Optional, Set
+from pydantic import BaseModel, Field, model_validator
+
+from app.agents.schemas.requirement import Requirement
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 SessionStatus = Literal[
+    "planning",
+    "discovering",
+    "collecting",
+    "verifying",
+    "qualifying",
+    "composing",
+    "validating",
+    "waiting_approval",
+    "completed",
+    "exhausted",
+    "failed",
+    "needs_clarification",
+    "rejected",
+]
+
+ResumeState = Literal[
     "discovering",
     "collecting",
     "verifying",
@@ -10,60 +36,147 @@ SessionStatus = Literal[
     "composing",
     "validating",
     "completed",
-    "exhausted"
 ]
+
+VALID_RESUME_STATES: Set[str] = {
+    "discovering",
+    "collecting",
+    "verifying",
+    "qualifying",
+    "composing",
+    "validating",
+    "completed",
+}
+
+ALLOWED_TRANSITIONS: Dict[str, Set[str]] = {
+    "planning": {"discovering", "needs_clarification", "failed"},
+    "discovering": {"collecting", "exhausted", "failed"},
+    "collecting": {"verifying", "failed"},
+    "verifying": {"qualifying", "failed"},
+    "qualifying": {"composing", "discovering", "exhausted", "failed"},
+    "composing": {"validating", "failed"},
+    "validating": {"completed", "waiting_approval", "composing", "failed"},
+    "waiting_approval": {"rejected", "failed"},  # Approval exit exclusively via resume_from_approval(task)
+    "exhausted": {"composing", "completed", "failed"},
+    "needs_clarification": {"planning", "failed"},
+    "completed": {"waiting_approval"},
+    "failed": set(),
+    "rejected": set(),
+}
+
+
+class InvalidStateTransitionError(RuntimeError):
+    """Raised when a caller attempts an illegal ResearchSession state transition."""
 
 
 class ResearchSession(BaseModel):
-    """
-    Explicit stateful ResearchSession owned by the Python State Machine.
-    The LLM never decides when research is exhausted — Python evaluates termination
-    rules against this object.
-    """
+    """Explicit stateful ResearchSession owned by the Python control plane."""
     id: str
     task_id: str
+    employee_id: str = "emp_sdr_01"
     raw_prompt: str
 
-    # Structured constraints parsed by Planner
+    # Typed requirements (v2) + legacy dicts for transitional compatibility
+    requirements: List[Requirement] = Field(default_factory=list)
     hard_constraints: Dict[str, Any] = Field(default_factory=dict)
     soft_constraints: Dict[str, Any] = Field(default_factory=dict)
-    target_leads: int = 10
 
-    # Explicit budget & termination limits (Amendment #5)
-    current_hop: int = 0
-    max_hops: int = 4
-    max_candidates: int = 50
-    max_verification_requests: int = 50
+    target_verified_leads: int = Field(default=10, ge=1)
+    allow_prospects: bool = True
+
+    # Explicit budget & termination limits
+    current_hop: int = Field(default=0, ge=0)
+    max_hops: int = Field(default=4, ge=1)
+    max_candidates: int = Field(default=50, ge=1)
+    max_verification_requests: int = Field(default=50, ge=1)
 
     # Live counters
-    candidates_found: int = 0
-    candidates_verified: int = 0
-    verification_requests_made: int = 0
+    candidates_found: int = Field(default=0, ge=0)
+    candidates_verified: int = Field(default=0, ge=0)
+    verification_requests_made: int = Field(default=0, ge=0)
 
     # History & deduplication
     search_queries_used: List[str] = Field(default_factory=list)
     domains_seen: List[str] = Field(default_factory=list)
 
-    # Measured Telemetry (Amendment #1: measure actual LLM/tool usage)
-    llm_calls_made: int = 0
-    tavily_calls_made: int = 0
-    tokens_in: int = 0
-    tokens_out: int = 0
+    # Measured Telemetry
+    llm_calls_made: int = Field(default=0, ge=0)
+    tavily_calls_made: int = Field(default=0, ge=0)
+    tokens_in: int = Field(default=0, ge=0)
+    tokens_out: int = Field(default=0, ge=0)
 
-    status: SessionStatus = "discovering"
-    termination_reason: str = ""
+    status: SessionStatus = "planning"
+    termination_reason: Optional[str] = ""
+    created_at: str = Field(default_factory=_utc_now)
+    updated_at: str = Field(default_factory=_utc_now)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _sync_target_leads(cls, values: Any) -> Any:
+        if not isinstance(values, dict):
+            return values
+        data = dict(values)
+        if "target_leads" in data and "target_verified_leads" not in data:
+            data["target_verified_leads"] = data.pop("target_leads")
+        elif "target_leads" in data:
+            data.pop("target_leads")
+        return data
+
+    @property
+    def target_leads(self) -> int:
+        return self.target_verified_leads
+
+    @target_leads.setter
+    def target_leads(self, val: int) -> None:
+        self.target_verified_leads = val
+
+    def transition_to(self, next_state: SessionStatus) -> SessionStatus:
+        """Enforce ALLOWED_TRANSITIONS and forward-only hop budget."""
+        allowed = ALLOWED_TRANSITIONS.get(self.status, set())
+        if next_state not in allowed:
+            raise InvalidStateTransitionError(
+                f"Illegal session transition '{self.status}' -> '{next_state}'. "
+                f"Allowed from '{self.status}': {sorted(allowed)}"
+            )
+
+        if next_state == "discovering":
+            next_hop = self.current_hop + 1
+            if next_hop > self.max_hops:
+                raise InvalidStateTransitionError(
+                    f"Cannot enter 'discovering' at hop {next_hop}: exceeds max_hops={self.max_hops}"
+                )
+            self.current_hop = next_hop
+
+        self.status = next_state
+        self.updated_at = _utc_now()
+        return self.status
+
+    def resume_from_approval(self, task: Any) -> SessionStatus:
+        """Locked approval resume per Rev 3 Section 4.3.
+
+        Caller cannot pass a destination state; destination is read strictly
+        from `task.resume_state`.
+        """
+        if self.status != "waiting_approval":
+            raise InvalidStateTransitionError(
+                f"Cannot resume session in status '{self.status}' (must be 'waiting_approval')"
+            )
+        resume_state = getattr(task, "resume_state", None)
+        if not resume_state and isinstance(task, dict):
+            resume_state = task.get("resume_state")
+        if not resume_state:
+            raise InvalidStateTransitionError("Task has no recorded resume_state")
+        if resume_state not in VALID_RESUME_STATES:
+            raise InvalidStateTransitionError(f"Task has invalid resume_state '{resume_state}'")
+
+        self.status = resume_state  # type: ignore[assignment]
+        self.updated_at = _utc_now()
+        return self.status
 
     def should_continue_discovery(self, viable_count: int) -> bool:
-        """
-        Deterministic termination check owned by Python (never the LLM):
-        - If viable_count >= target_leads -> Stop discovery, go to COMPOSE
-        - Else if current_hop >= max_hops -> Exhausted, go to COMPOSE
-        - Else if candidates_found >= max_candidates -> Exhausted, go to COMPOSE
-        - Else if verification_requests_made >= max_verification_requests -> Exhausted, go to COMPOSE
-        - Otherwise -> Continue to next hop in DISCOVER
-        """
-        if viable_count >= self.target_leads:
-            self.termination_reason = f"Target met ({viable_count}/{self.target_leads} viable leads found)."
+        """Deterministic termination check owned by Python (never the LLM)."""
+        if viable_count >= self.target_verified_leads:
+            self.termination_reason = f"Target met ({viable_count}/{self.target_verified_leads} viable leads found)."
             return False
         if self.current_hop >= self.max_hops:
             self.status = "exhausted"

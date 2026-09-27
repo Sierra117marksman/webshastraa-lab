@@ -38,7 +38,15 @@ from app.engine.conflict_resolver import check_for_conflict, apply_supersession
 from app.engine.reflector import generate_proposed_memory
 
 
+import tempfile
+from pathlib import Path
+import app.db.store as _store_mod
+
+
 def run_suite():
+    _tmp_dir = tempfile.TemporaryDirectory()
+    _prev_db_path = _store_mod.DB_PATH
+    _store_mod.DB_PATH = str(Path(_tmp_dir.name) / "regression_suite.db")
     init_db()
     passed = 0
     failed = 0
@@ -446,6 +454,8 @@ def run_suite():
     print(f"Total: {passed + failed} | Passed: {passed} | Failed: {failed}")
     print("=" * 72)
 
+    _store_mod.DB_PATH = _prev_db_path
+    _tmp_dir.cleanup()
     return 0 if failed == 0 else 1
 
 

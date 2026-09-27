@@ -60,8 +60,22 @@ export default function PermissionPanel({ employeeId, apiBase, employeeTools }: 
   }, [apiBase, employeeId]);
 
   useEffect(() => {
-    fetchPermissions();
-  }, [fetchPermissions]);
+    let active = true;
+    fetch(`${apiBase}/api/employees/${employeeId}/permissions`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: ToolPermission[] | null) => {
+        if (active && data) setPermissions(data);
+      })
+      .catch(() => {
+        // Ignore transient network hiccups
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [apiBase, employeeId]);
 
   const getPermissionForTool = (toolId: string): ToolPermission => {
     return (

@@ -108,7 +108,7 @@ export default function MarkdownViewer({ content, className = '' }: MarkdownView
               {children}
             </blockquote>
           ),
-          code: ({ className, children, ...props }: any) => {
+          code: ({ className, children }: { className?: string; children?: React.ReactNode }) => {
             const isInline = !className && typeof children === 'string' && !children.includes('\n');
             if (isInline) {
               return (

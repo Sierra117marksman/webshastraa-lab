@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Building2, ArrowRight, ShieldCheck, Activity, Brain, Clock } from 'lucide-react';
+import { Building2, ArrowRight } from 'lucide-react';
 import { AIEmployeeSpec, TaskRecord, TodayStats } from '@/types';
 
 interface FloorplanViewProps {

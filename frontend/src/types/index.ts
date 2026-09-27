@@ -29,11 +29,19 @@ export interface TaskRecord {
   id: string;
   employee_id: string;
   employee_name: string;
+  session_id?: string | null;
+  resume_state?: string | null;
   task_prompt: string;
   status: 'pending' | 'running' | 'waiting_approval' | 'completed' | 'failed' | 'rejected' | string;
   steps: TaskStep[];
   pending_action?: {
+    action?: string;
     tool_name: string;
+    permission?: string;
+    reason?: string;
+    candidate_id?: string;
+    company_name?: string;
+    canonical_domain?: string;
     tool_params: Record<string, unknown>;
     explanation: string;
   };
@@ -136,3 +144,125 @@ export interface TodayStats {
     active_memories: number;
   }[];
 }
+
+export interface CandidateBadge {
+  symbol: string;
+  label: string;
+  status: 'SUPPORTED' | 'UNVERIFIED' | 'NOT_AUDITED' | 'CONTRADICTED' | string;
+  field: string;
+}
+
+export interface ResearchEvidenceItem {
+  id: string;
+  verifier_version: string;
+  source_url: string;
+  source_type: string;
+  supports_field: string;
+  signal_type: string;
+  extracted_value: string;
+  raw_excerpt: string;
+  content_hash: string;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW' | string;
+  financial_period?: string | null;
+  retrieved_at: string;
+}
+
+export interface ResearchClaimItem {
+  id: string;
+  field: string;
+  value?: string | null;
+  status: 'SUPPORTED' | 'UNSUPPORTED' | 'CONTRADICTED' | 'UNVERIFIED' | 'NOT_AUDITED' | string;
+  notes?: string | null;
+  version: number;
+  updated_at: string;
+}
+
+export interface ResearchOutreachDraft {
+  to: string;
+  subject: string;
+  body: string;
+  allowed_claims: Record<string, unknown>;
+  blocked_claims: Record<string, string>;
+}
+
+export interface ResearchCandidate {
+  id: string;
+  company_name: string;
+  canonical_domain: string;
+  initial_url: string;
+  final_url?: string | null;
+  discovery_hop: number;
+  http_reachable?: boolean | null;
+  http_status?: number | null;
+  page_available?: boolean | null;
+  storefront_state: string;
+  audited_by_verifier: boolean;
+  qualification_status: 'PENDING' | 'VERIFIED' | 'PROSPECT' | 'REJECTED' | string;
+  rejection_reason?: string | null;
+  evidence_count: number;
+  claims_count: number;
+  badges: CandidateBadge[];
+  evidence: ResearchEvidenceItem[];
+  claims: ResearchClaimItem[];
+  decision?: {
+    id: string;
+    hop: number;
+    result: string;
+    decision_hash: string;
+    requirement_results: Record<string, unknown>;
+    rejection_reason?: string | null;
+    created_at: string;
+  } | null;
+  outreach_draft?: ResearchOutreachDraft | null;
+}
+
+export interface PendingApprovalContext {
+  required: boolean;
+  candidate_id?: string | null;
+  company_name: string;
+  canonical_domain: string;
+  action: string;
+  tool_name: string;
+  permission: string;
+  reason: string;
+  explanation: string;
+  to: string;
+  subject: string;
+  body: string;
+}
+
+export interface TaskResearchLedger {
+  task_id: string;
+  session_id: string;
+  employee_id: string;
+  employee_name: string;
+  task_status: string;
+  session_status: string;
+  raw_prompt: string;
+  target_verified_leads: number;
+  current_hop: number;
+  max_hops: number;
+  termination_reason: string;
+  current_stage_label: string;
+  metrics: {
+    target: number;
+    candidates: number;
+    audited: number;
+    verified: number;
+    prospects: number;
+    rejected: number;
+    pending: number;
+  };
+  requirements: {
+    id: string;
+    field: string;
+    operator: string;
+    expected: unknown;
+    priority: string;
+    on_unknown: string;
+    observability_class: string;
+  }[];
+  candidates: ResearchCandidate[];
+  pending_approval?: PendingApprovalContext | null;
+}
+

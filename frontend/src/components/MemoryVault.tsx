@@ -98,8 +98,22 @@ export default function MemoryVault({ employeeId, apiBase }: MemoryVaultProps) {
   }, [apiBase, employeeId]);
 
   useEffect(() => {
-    fetchMemories();
-  }, [fetchMemories]);
+    let active = true;
+    fetch(`${apiBase}/api/employees/${employeeId}/memories?status=all`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (active && data) setMemories(data);
+      })
+      .catch(() => {
+        // Ignore transient network hiccups
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [apiBase, employeeId]);
 
   const patchMemory = async (id: string, patch: Partial<Pick<MemoryRecord, 'status' | 'distilled_rule'>>) => {
     try {

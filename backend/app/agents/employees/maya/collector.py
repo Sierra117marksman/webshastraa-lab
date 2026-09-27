@@ -263,7 +263,7 @@ class MayaCollector:
         session: ResearchSession,
         llm_client: Any
     ) -> List[Dict[str, str]]:
-        from app.engine.gemini_client import generate_content_with_retry
+        from app.engine.llm_gateway import generate_content_with_retry
         snippets = "\n---\n".join(
             f"Title: {r.get('title')}\nURL: {r.get('url')}\nSnippet: {r.get('content', '')[:350]}"
             for r in search_results[:6]

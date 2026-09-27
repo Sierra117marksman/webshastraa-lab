@@ -6,18 +6,13 @@ import {
   Send,
   Check,
   X,
-  Shield,
-  Activity,
   Sparkles,
-  Clock,
-  Terminal,
   AlertCircle,
   CheckCircle2,
   Inbox,
   Loader2
 } from 'lucide-react';
 import { AIEmployeeSpec, TaskRecord, AuditLogEntry } from '@/types';
-import ExecutionMonitor from './ExecutionMonitor';
 import MemoryVault from './MemoryVault';
 import PermissionPanel from './PermissionPanel';
 import AgentOutputDesk from './AgentOutputDesk';
@@ -80,7 +75,6 @@ export default function OfficeView({
 
   // Filter tasks specific to this employee
   const employeeTasks = tasks.filter((t) => t.employee_id === employee.id);
-  const latestTask = employeeTasks[0];
   const pendingApprovals = employeeTasks.filter((t) => t.status === 'waiting_approval');
 
   // Status computation
@@ -210,7 +204,7 @@ export default function OfficeView({
               <div>
                 <span className="text-[11px] text-zinc-500 block uppercase tracking-wider mb-1 font-semibold">Behavioral Persona</span>
                 <p className="text-xs text-zinc-400 italic bg-white/[0.02] p-3 rounded-xl border border-white/[0.04]">
-                  "{employee.persona}"
+                  &ldquo;{employee.persona}&rdquo;
                 </p>
               </div>
 

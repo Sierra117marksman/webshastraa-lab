@@ -75,6 +75,59 @@ MemoryCategory = Literal[
     # Memory CANNOT represent or override policy.
 ]
 
+MemoryScope = Literal[
+    "global",
+    "cold_outreach",
+    "lead_research",
+    "hiring_research",
+    "enterprise_clients",
+    "financial_ops",
+    "content_creation",
+]
+
+VALID_MEMORY_SCOPES: tuple[str, ...] = (
+    "global",
+    "cold_outreach",
+    "lead_research",
+    "hiring_research",
+    "enterprise_clients",
+    "financial_ops",
+    "content_creation",
+)
+
+SCOPE_ALIASES: dict[str, str] = {
+    "follow_up_emails": "cold_outreach",
+    "outreach": "cold_outreach",
+    "email_outreach": "cold_outreach",
+    "data_research": "lead_research",
+    "research": "lead_research",
+    "hiring": "hiring_research",
+    "recruiting": "hiring_research",
+    "enterprise": "enterprise_clients",
+    "finance": "financial_ops",
+    "billing": "financial_ops",
+    "content": "content_creation",
+    "marketing": "content_creation",
+}
+
+MemoryStage = Literal[
+    "PLAN",
+    "COLLECT",
+    "VERIFY",
+    "QUALIFY",
+    "COMPOSE",
+    "REFLECT",
+]
+
+VALID_MEMORY_STAGES: tuple[str, ...] = (
+    "PLAN",
+    "COLLECT",
+    "VERIFY",
+    "QUALIFY",
+    "COMPOSE",
+    "REFLECT",
+)
+
 MemoryTrigger = Literal[
     "rejection",          # Founder rejected an approval action
     "task_failure",       # Task ended in error or suboptimal result
@@ -91,13 +144,52 @@ MemoryStatus = Literal[
 ]
 
 
+def normalize_memory_scope(raw_scope: Optional[str]) -> str:
+    """Normalize a scope string to one of the 7 v2 SQLite-enforced MemoryScope values."""
+    if not raw_scope:
+        return "global"
+    cleaned = str(raw_scope).strip().lower().replace(" ", "_").replace("-", "_")
+    if cleaned in VALID_MEMORY_SCOPES:
+        return cleaned
+    if cleaned in SCOPE_ALIASES:
+        return SCOPE_ALIASES[cleaned]
+    return "global"
+
+
+def normalize_memory_stages(stages: Optional[List[str]]) -> List[MemoryStage]:
+    """Normalize stage names to valid uppercase MemoryStage values, defaulting to ['PLAN', 'COMPOSE']."""
+    if not stages:
+        return ["PLAN", "COMPOSE"]
+    normalized: List[MemoryStage] = []
+    for s in stages:
+        upper = str(s).strip().upper()
+        if upper in VALID_MEMORY_STAGES and upper not in normalized:
+            normalized.append(upper)  # type: ignore[arg-type]
+    return normalized or ["PLAN", "COMPOSE"]
+
+
+def compute_rule_key(category: str, scope: str, topic_or_title: str) -> str:
+    """Compute a deterministic canonical rule_key for conflict detection and indexing."""
+    import re
+    norm_scope = normalize_memory_scope(scope)
+    norm_topic = re.sub(r"[^a-z0-9]+", "_", (topic_or_title or "").strip().casefold()).strip("_")
+    if not norm_topic:
+        norm_topic = "general"
+    return f"memory:{category}:{norm_scope}:{norm_topic}"
+
+
+from pydantic import field_validator, model_validator
+
+
 class MemoryRecord(BaseModel):
     id: str
     employee_id: str
     category: MemoryCategory
     title: str                        # Short label, e.g. "Max discount 10%"
     trigger_event: MemoryTrigger
-    scope: str = "global"             # e.g. 'global', 'enterprise_clients', 'cold_outreach'
+    scope: str = "global"             # Normalized to VALID_MEMORY_SCOPES
+    applies_to_stages: List[MemoryStage] = Field(default_factory=lambda: ["PLAN", "COMPOSE"])
+    rule_key: Optional[str] = None    # Canonical key: memory:{category}:{scope}:{topic}
     source: str                       # e.g. "Founder feedback on task_a1b2c3d4"
     context: str                      # Brief summary of what triggered this learning
     critique: str                     # What went wrong or what was corrected
@@ -111,11 +203,29 @@ class MemoryRecord(BaseModel):
     last_confirmed_at: Optional[str] = None
     activated_at: Optional[str] = None
 
+    @field_validator("scope", mode="before")
+    @classmethod
+    def _validate_scope(cls, v: Optional[str]) -> str:
+        return normalize_memory_scope(v)
+
+    @field_validator("applies_to_stages", mode="before")
+    @classmethod
+    def _validate_stages(cls, v: Optional[List[str]]) -> List[MemoryStage]:
+        return normalize_memory_stages(v)
+
+    @model_validator(mode="after")
+    def _ensure_rule_key(self) -> "MemoryRecord":
+        if not self.rule_key or not str(self.rule_key).strip():
+            self.rule_key = compute_rule_key(self.category, self.scope, self.title)
+        return self
+
 
 class CreateMemoryRequest(BaseModel):
     category: MemoryCategory
     title: str
     scope: str = "global"
+    applies_to_stages: List[MemoryStage] = Field(default_factory=lambda: ["PLAN", "COMPOSE"])
+    rule_key: Optional[str] = None
     context: str
     critique: str
     distilled_rule: str
@@ -127,6 +237,7 @@ class UpdateMemoryRequest(BaseModel):
     title: Optional[str] = None
     distilled_rule: Optional[str] = None
     scope: Optional[str] = None
+    applies_to_stages: Optional[List[MemoryStage]] = None
     priority: Optional[int] = None
     status: Optional[MemoryStatus] = None
 
@@ -139,6 +250,8 @@ class AuditLogEntry(BaseModel):
     id: str
     employee_id: str
     task_id: str
+    session_id: Optional[str] = None
+    context_snapshot_id: Optional[str] = None
     event_type: Literal[
         "dispatch",
         "context_built",
@@ -151,10 +264,14 @@ class AuditLogEntry(BaseModel):
         "memory_injected",
         "reflection_proposed",
         "memory_activated",
+        "memory_superseded",
+        "memory_rejected",
+        "memory_conflict_resolved",
+        "employee_compiled",
         "task_completed",
         "task_failed",
     ]
-    prompt_version: Optional[str] = None   # SHA256 hash of compiled system prompt
+    prompt_version: Optional[str] = None   # SHA256 hash of compiled context snapshot
     memories_used: List[str] = Field(default_factory=list)  # Memory record IDs
     tools_called: List[str] = Field(default_factory=list)
     decision: Optional[str] = None

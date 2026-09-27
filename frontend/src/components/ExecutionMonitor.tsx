@@ -37,13 +37,6 @@ function truncateOutput(val: unknown): string {
   return 'Object result';
 }
 
-function formatParams(params: Record<string, unknown>): string {
-  return Object.entries(params)
-    .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
-    .join(' · ')
-    .slice(0, 150);
-}
-
 function buildTimeline(task: TaskRecord, auditLog: AuditLogEntry[]): TimelineEvent[] {
   const events: TimelineEvent[] = [];
 

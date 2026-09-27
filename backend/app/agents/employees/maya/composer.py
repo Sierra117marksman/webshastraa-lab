@@ -224,7 +224,7 @@ class MayaComposer:
 
         # Optional LLM polish using ONLY allowed_claims (never raw research)
         if llm_client is not None and allowed_claims:
-            from app.engine.gemini_client import generate_content_with_retry
+            from app.engine.llm_gateway import generate_content_with_retry
             prompt = (
                 "You are drafting a short, consultative B2B cold email.\n"
                 "STRICT EVIDENCE BOUNDARY: You may ONLY reference the verified facts below. "

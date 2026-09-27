@@ -1,17 +1,76 @@
-from app.agents.schemas.evidence import Evidence, EvidenceStore, SourceType
-from app.agents.schemas.claim import Claim, ClaimStatus
-from app.agents.schemas.candidate import Candidate, CandidateLedger, QualificationStatus
-from app.agents.schemas.session import ResearchSession, SessionStatus
+from app.agents.schemas.tool_result import ToolResult, ToolStatus, SearchHit, WebSearchPayload
+from app.agents.schemas.requirement import (
+    Requirement,
+    RequirementField,
+    RequirementOperator,
+    RequirementPriority,
+    UnknownPolicy,
+    ObservabilityClass,
+    NumericRange,
+)
+from app.agents.schemas.evidence import (
+    Evidence,
+    VerificationEvidence,
+    EvidenceStore,
+    SourceType,
+    ConfidenceLevel,
+    compute_evidence_content_hash,
+)
+from app.agents.schemas.claim import (
+    Claim,
+    ClaimStatus,
+    ClaimSnapshotItem,
+    RequirementEvaluation,
+    QualificationDecision,
+    QualificationResult,
+    compute_decision_hash,
+)
+from app.agents.schemas.candidate import (
+    Candidate,
+    CandidateLedger,
+    QualificationStatus,
+    StorefrontState,
+)
+from app.agents.schemas.session import (
+    ResearchSession,
+    SessionStatus,
+    ResumeState,
+    ALLOWED_TRANSITIONS,
+    InvalidStateTransitionError,
+)
 
 __all__ = [
+    "ToolResult",
+    "ToolStatus",
+    "SearchHit",
+    "WebSearchPayload",
+    "Requirement",
+    "RequirementField",
+    "RequirementOperator",
+    "RequirementPriority",
+    "UnknownPolicy",
+    "ObservabilityClass",
+    "NumericRange",
     "Evidence",
+    "VerificationEvidence",
     "EvidenceStore",
     "SourceType",
+    "ConfidenceLevel",
+    "compute_evidence_content_hash",
     "Claim",
     "ClaimStatus",
+    "ClaimSnapshotItem",
+    "RequirementEvaluation",
+    "QualificationDecision",
+    "QualificationResult",
+    "compute_decision_hash",
     "Candidate",
     "CandidateLedger",
     "QualificationStatus",
+    "StorefrontState",
     "ResearchSession",
     "SessionStatus",
+    "ResumeState",
+    "ALLOWED_TRANSITIONS",
+    "InvalidStateTransitionError",
 ]

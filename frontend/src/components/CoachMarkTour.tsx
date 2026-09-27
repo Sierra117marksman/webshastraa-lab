@@ -7,7 +7,6 @@ import {
   ChevronRight,
   X,
   Check,
-  Zap,
   Users,
   KeyRound,
   BarChart3,
@@ -27,7 +26,7 @@ export interface TourStep {
 interface CoachMarkTourProps {
   isOpen: boolean;
   onClose: () => void;
-  setActiveTab: (tab: any) => void;
+  setActiveTab: (tab: 'studio' | 'hire' | 'roster' | 'feed' | 'settings') => void;
 }
 
 const TOUR_STEPS: TourStep[] = [

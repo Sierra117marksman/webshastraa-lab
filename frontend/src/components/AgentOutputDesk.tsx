@@ -11,8 +11,7 @@ import {
   Zap,
   CheckCircle2,
   AlertCircle,
-  Loader2,
-  ChevronDown
+  Loader2
 } from 'lucide-react';
 import { TaskRecord, AuditLogEntry, AIEmployeeSpec } from '@/types';
 import ExecutionMonitor from './ExecutionMonitor';

@@ -42,9 +42,14 @@ from app.db.store import (
     save_permission,
     save_audit_log,
     list_audit_log,
+    get_task_research_ledger,
 )
 from app.engine.compiler import compile_prompt_to_employee
-from app.engine.runner import run_employee_task, resume_approved_task
+from app.engine.agent_runtime import (
+    run_employee_task,
+    resume_approved_task,
+    request_candidate_outreach_approval,
+)
 from app.engine.conflict_resolver import check_for_conflict, apply_supersession
 from app.tools.registry import TOOLS_METADATA
 
@@ -64,6 +69,12 @@ class SettingsUpdate(BaseModel):
     smtp_user: Optional[str] = None
     smtp_pass: Optional[str] = None
     blacklist_domains: Optional[str] = None
+
+
+class CandidateOutreachRequest(BaseModel):
+    to: Optional[str] = None
+    subject: Optional[str] = None
+    body: Optional[str] = None
 
 @app.on_event('startup')
 def on_startup():
@@ -102,7 +113,7 @@ def get_analytics():
 
 @app.get('/api/settings')
 def get_settings():
-    from app.engine.gemini_client import get_groq_api_key
+    from app.engine.llm_gateway import get_groq_api_key
     groq_key = get_groq_api_key()
     tavily_key = os.getenv('TAVILY_API_KEY', '')
     smtp_user = os.getenv('SMTP_USER', 'webshastraa@gmail.com')
@@ -181,6 +192,29 @@ def dispatch_task(employee_id: str, req: DispatchTaskRequest):
 @app.get('/api/tasks', response_model=List[TaskRecord])
 def get_task_history():
     return list_tasks(limit=50)
+
+@app.get('/api/tasks/{task_id}/research')
+def get_task_research(task_id: str):
+    ledger = get_task_research_ledger(task_id)
+    if not ledger:
+        raise HTTPException(status_code=404, detail='Research session not found for task')
+    return ledger
+
+@app.post('/api/tasks/{task_id}/candidates/{candidate_id}/request-outreach', response_model=TaskRecord)
+def request_candidate_outreach(task_id: str, candidate_id: str, req: CandidateOutreachRequest):
+    try:
+        task = request_candidate_outreach_approval(
+            task_id=task_id,
+            candidate_id=candidate_id,
+            recipient_email=req.to,
+            custom_subject=req.subject,
+            custom_body=req.body,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    if not task:
+        raise HTTPException(status_code=404, detail='Task or candidate not found')
+    return task
 
 @app.post('/api/tasks/{task_id}/approve', response_model=TaskRecord)
 def approve_action(task_id: str, req: ApprovalActionRequest):

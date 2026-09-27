@@ -10,8 +10,6 @@ import {
   Brain,
   Lightbulb,
   ArrowRight,
-  ShieldCheck,
-  Zap,
   Activity
 } from 'lucide-react';
 import { TodayStats, AIEmployeeSpec, TaskRecord } from '@/types';

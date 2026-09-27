@@ -26,7 +26,7 @@ from app.engine.qualification import (
     QualificationEngine,
     OutreachClaimValidator
 )
-from app.engine.gemini_client import generate_content_with_retry
+from app.engine.llm_gateway import generate_content_with_retry
 from app.engine.policy_engine import check_tool_permission
 
 logger = logging.getLogger(__name__)
@@ -199,17 +199,25 @@ def parse_json_safely(text: str) -> Dict[str, Any]:
 
 def execute_tool_call(tool_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
     normalized = tool_name.lower().replace(' ', '_').strip() if tool_name else ''
+    res: Any = None
     if 'search' in normalized or normalized == 'web_search':
-        return execute_web_search(params.get('query', ''))
+        res = execute_web_search(params.get('query', ''))
     elif 'email' in normalized or normalized == 'email_sender':
-        return execute_email_sender(params.get('to', ''), params.get('subject', ''), params.get('body', ''))
+        res = execute_email_sender(params.get('to', ''), params.get('subject', ''), params.get('body', ''))
     elif 'sheet' in normalized or normalized == 'sheet_logger':
-        return execute_sheet_logger(params.get('table', 'general_records'), params.get('record', {}))
+        res = execute_sheet_logger(params.get('table', 'general_records'), params.get('record', {}))
     elif 'slack' in normalized or normalized == 'slack_notifier':
-        return execute_slack_notifier(params.get('channel', '#general'), params.get('message', ''))
+        res = execute_slack_notifier(params.get('channel', '#general'), params.get('message', ''))
     elif 'domain' in normalized or normalized == 'domain_verifier':
-        return execute_domain_verifier(params.get('url', ''))
-    return {'error': f'Tool {tool_name} not recognized.'}
+        res = execute_domain_verifier(params.get('url', ''))
+    else:
+        return {'error': f'Tool {tool_name} not recognized.'}
+    if hasattr(res, 'model_dump'):
+        dumped = res.model_dump()
+        if isinstance(dumped.get('data'), dict):
+            return {**dumped['data'], **dumped}
+        return dumped
+    return res
 
 MAX_CIRCUIT_BREAKER_STEPS = 3
 

@@ -1,16 +1,14 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Sparkles,
   Send,
   Check,
   X,
   FileText,
-  Terminal,
   Copy,
   Loader2,
-  AlertCircle,
   CheckCircle2,
   Mail,
   ShieldCheck,
@@ -21,11 +19,12 @@ import {
   DollarSign,
   Zap
 } from 'lucide-react';
-import { AIEmployeeSpec, TaskRecord, AuditLogEntry } from '@/types';
+import { AIEmployeeSpec, TaskRecord, AuditLogEntry, TaskResearchLedger } from '@/types';
 import MarkdownViewer from './MarkdownViewer';
 import ExecutionMonitor from './ExecutionMonitor';
 import MemoryVault from './MemoryVault';
 import PermissionPanel from './PermissionPanel';
+import MayaCommandCard from './MayaCommandCard';
 
 interface UnifiedStudioProps {
   employees: AIEmployeeSpec[];
@@ -54,9 +53,9 @@ const HUMAN_GUIDES: Record<string, AgentHumanGuide> = {
     toolsSummary: ['🔍 Google & Web Search', '🌐 Live Website & App Verifier', '📊 CRM Lead Scorer', '✉️ Gmail Cold Outreach'],
     safetyNote: 'Never sends an email without your 1-click approval.',
     quickChips: [
-      'Find 10 Indian D2C brands on Shopify using paid apps and draft cold outreach',
+      'Find 5 Indian D2C brands on Shopify using Judge.me or Klaviyo with ₹10L–₹50L turnover and send cold outreach',
       'Find 5 D2C skincare brands on Shopify and verify their installed apps',
-      'Audit domain tech stack for velnoir.com and draft a consultative founder email'
+      'Find 4 brands running both Shopify and WooCommerce simultaneously and send emails without approval'
     ]
   },
   Marketing: {
@@ -101,7 +100,6 @@ export default function UnifiedStudio({
   employees,
   tasks,
   apiBase,
-  activeEmailSender,
   onDispatch,
   onApprove,
   dispatchingId
@@ -136,26 +134,20 @@ export default function UnifiedStudio({
   const [opsDetails, setOpsDetails] = useState('Check line-item totals, GST calculations, and monthly retainer caps');
 
   // Output viewer state
-  const [outputTab, setOutputTab] = useState<'deliverable' | 'steps'>('deliverable');
+  const [outputTab, setOutputTab] = useState<'ledger' | 'deliverable' | 'steps'>('ledger');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [activeLedger, setActiveLedger] = useState<TaskResearchLedger | null>(null);
   const [copied, setCopied] = useState(false);
   const [rejectionFeedback, setRejectionFeedback] = useState<Record<string, string>>({});
   const [showRejectInput, setShowRejectInput] = useState<Record<string, boolean>>({});
   const [isBrainDrawerOpen, setIsBrainDrawerOpen] = useState(false);
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
 
-  // Resolve selected employee object
+  // Resolve selected employee object without synchronous setState in useEffect
   const activeEmployee: AIEmployeeSpec | undefined =
     selectedId === 'auto'
       ? employees[0]
       : employees.find((e) => e.id === selectedId) || employees[0];
-
-  // Ensure selectedId points to a valid employee once loaded
-  useEffect(() => {
-    if (employees.length > 0 && selectedId !== 'auto' && !employees.some((e) => e.id === selectedId)) {
-      setSelectedId(employees[0].id);
-    }
-  }, [employees, selectedId]);
 
   // Load audit log for active employee
   useEffect(() => {
@@ -251,6 +243,7 @@ export default function UnifiedStudio({
     }
 
     setSelectedTaskId(null); // Focus on newest task
+    setOutputTab('ledger');
     await onDispatch(targetEmp.id, rawPrompt);
     if (promptMode === 'freeform' && !overridePrompt) {
       setFreeformPrompt('');
@@ -266,6 +259,40 @@ export default function UnifiedStudio({
   const activeTask = selectedTaskId
     ? visibleTasks.find((t) => t.id === selectedTaskId) || visibleTasks[0]
     : visibleTasks[0];
+
+  const activeTaskId = activeTask?.id;
+  const activeTaskStatus = activeTask?.status;
+
+  const fetchActiveLedger = useCallback(async () => {
+    if (!activeTaskId) {
+      setActiveLedger(null);
+      return;
+    }
+    try {
+      const res = await fetch(`${apiBase}/api/tasks/${activeTaskId}/research`);
+      if (res.ok) {
+        const data: TaskResearchLedger = await res.json();
+        setActiveLedger(data);
+      } else {
+        setActiveLedger(null);
+      }
+    } catch {
+      // Ignore transient network errors
+    }
+  }, [apiBase, activeTaskId]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchActiveLedger();
+    }, 0);
+    const interval = setInterval(() => {
+      fetchActiveLedger();
+    }, 2500);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
+  }, [fetchActiveLedger, activeTaskStatus]);
 
   const pendingApprovals = visibleTasks.filter((t) => t.status === 'waiting_approval');
 
@@ -349,7 +376,7 @@ export default function UnifiedStudio({
           <div className="space-y-2.5 pt-1">
             {employees.map((emp) => {
               const empGuide = HUMAN_GUIDES[emp.department] || HUMAN_GUIDES.CRM;
-              const isSelected = selectedId === emp.id;
+              const isSelected = selectedId !== 'auto' && activeEmployee?.id === emp.id;
               const empTasks = tasks.filter((t) => t.employee_id === emp.id);
               const isRunning = empTasks.some((t) => t.status === 'running');
               const waitingCount = empTasks.filter((t) => t.status === 'waiting_approval').length;
@@ -614,6 +641,7 @@ export default function UnifiedStudio({
                         className="w-full rounded-xl bg-[#0b0f1a] border border-white/[0.1] px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
                       >
                         <option value="Verify live websites and draft cold outreach email">Verify Sites + Draft Outreach Email</option>
+                        <option value="Verify live websites, draft cold outreach email, and send outreach">Verify + Draft &amp; Send Outreach (Approval Gate)</option>
                         <option value="Produce a verified qualification table only (no emails)">Verified Research Table Only</option>
                       </select>
                     </div>
@@ -814,105 +842,109 @@ export default function UnifiedStudio({
             )}
           </div>
 
-          {/* 3. INLINE PENDING APPROVALS (IF ANY EMAIL / ACTION NEEDS SIGN-OFF) */}
-          {pendingApprovals.length > 0 && (
+          {/* 3. INLINE PENDING APPROVALS (FOR NON-LEDGER TASKS OR OTHER TASKS IN QUEUE) */}
+          {pendingApprovals.filter((t) => !(activeLedger && activeLedger.task_id === t.id && outputTab === 'ledger')).length > 0 && (
             <div className="space-y-3">
-              {pendingApprovals.map((task) => (
-                <div
-                  key={task.id}
-                  className="rounded-3xl border-2 border-amber-500/50 bg-gradient-to-b from-amber-950/25 via-[#0e111a] to-[#090c14] p-5 space-y-4 shadow-2xl"
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5">
-                      <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-black text-white">{task.employee_name}</span>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase">
-                            Needs Your Approval
-                          </span>
+              {pendingApprovals
+                .filter((t) => !(activeLedger && activeLedger.task_id === t.id && outputTab === 'ledger'))
+                .map((task) => (
+                  <div
+                    key={task.id}
+                    className="rounded-3xl border-2 border-amber-500/50 bg-gradient-to-b from-amber-950/25 via-[#0e111a] to-[#090c14] p-5 space-y-4 shadow-2xl"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-black text-white">{task.employee_name}</span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase">
+                              ⚠ APPROVAL REQUIRED
+                            </span>
+                          </div>
+                          <p className="text-xs text-zinc-300 mt-0.5">
+                            Action: <strong className="font-mono text-amber-300">{task.pending_action?.action || 'SEND_EMAIL'}</strong>
+                            {' · '}Permission: <strong className="font-mono text-indigo-300">{task.pending_action?.permission || 'REQUEST'}</strong>
+                            {' · '}Reason: <strong className="text-zinc-200">{task.pending_action?.reason || 'External side effect'}</strong>
+                          </p>
                         </div>
-                        <p className="text-xs text-zinc-400">
-                          Ready to send email via <code className="text-zinc-200">{activeEmailSender}</code>
-                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowRejectInput((prev) => ({ ...prev, [task.id]: !prev[task.id] }))
+                          }
+                          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-zinc-300 hover:text-rose-300 bg-white/[0.05] hover:bg-rose-950/40 border border-white/[0.1] transition cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          <span>Reject</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onApprove(task.id, true)}
+                          className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-600/30 transition cursor-pointer"
+                        >
+                          <Mail className="w-3.5 h-3.5" />
+                          <span>Approve</span>
+                        </button>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setShowRejectInput((prev) => ({ ...prev, [task.id]: !prev[task.id] }))
-                        }
-                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-zinc-300 hover:text-rose-300 bg-white/[0.05] hover:bg-rose-950/40 border border-white/[0.1] transition cursor-pointer"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                        <span>Reject / Teach Rule</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onApprove(task.id, true)}
-                        className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-600/30 transition cursor-pointer"
-                      >
-                        <Mail className="w-3.5 h-3.5" />
-                        <span>Approve &amp; Send Email</span>
-                      </button>
-                    </div>
+                    {/* Email Preview */}
+                    {task.pending_action && (
+                      <div className="rounded-2xl bg-black/60 border border-amber-500/20 p-4 space-y-2 text-xs">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-zinc-400 border-b border-white/[0.06] pb-2">
+                          <div>
+                            <span className="text-zinc-500">To: </span>
+                            <strong className="text-white font-mono">
+                              {String(task.pending_action.tool_params?.to || '')}
+                            </strong>
+                          </div>
+                          <div>
+                            <span className="text-zinc-500">Subject: </span>
+                            <strong className="text-white">
+                              {String(task.pending_action.tool_params?.subject || '')}
+                            </strong>
+                          </div>
+                        </div>
+                        <div className="text-zinc-200 whitespace-pre-wrap leading-relaxed pt-1 font-sans">
+                          {String(task.pending_action.tool_params?.body || '')}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Optional Rejection Feedback Box */}
+                    {showRejectInput[task.id] && (
+                      <div className="flex gap-2 pt-1">
+                        <input
+                          type="text"
+                          value={rejectionFeedback[task.id] || ''}
+                          onChange={(e) =>
+                            setRejectionFeedback((prev) => ({ ...prev, [task.id]: e.target.value }))
+                          }
+                          placeholder="Why are you rejecting this? (e.g. 'Never pitch unverified speed metrics')"
+                          className="flex-1 rounded-xl bg-black/60 border border-rose-500/40 px-3 py-2 text-xs text-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onApprove(
+                              task.id,
+                              false,
+                              rejectionFeedback[task.id] || 'Rejected by founder'
+                            );
+                            setShowRejectInput((prev) => ({ ...prev, [task.id]: false }));
+                          }}
+                          className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 text-white cursor-pointer"
+                        >
+                          Confirm Reject
+                        </button>
+                      </div>
+                    )}
                   </div>
-
-                  {/* Email Preview */}
-                  {task.pending_action && (
-                    <div className="rounded-2xl bg-black/60 border border-amber-500/20 p-4 space-y-2 text-xs">
-                      <div className="flex flex-wrap items-center justify-between gap-2 text-zinc-400 border-b border-white/[0.06] pb-2">
-                        <div>
-                          <span className="text-zinc-500">To: </span>
-                          <strong className="text-white font-mono">
-                            {String(task.pending_action.tool_params?.to || '')}
-                          </strong>
-                        </div>
-                        <div>
-                          <span className="text-zinc-500">Subject: </span>
-                          <strong className="text-white">
-                            {String(task.pending_action.tool_params?.subject || '')}
-                          </strong>
-                        </div>
-                      </div>
-                      <div className="text-zinc-200 whitespace-pre-wrap leading-relaxed pt-1 font-sans">
-                        {String(task.pending_action.tool_params?.body || '')}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Optional Rejection Feedback Box */}
-                  {showRejectInput[task.id] && (
-                    <div className="flex gap-2 pt-1">
-                      <input
-                        type="text"
-                        value={rejectionFeedback[task.id] || ''}
-                        onChange={(e) =>
-                          setRejectionFeedback((prev) => ({ ...prev, [task.id]: e.target.value }))
-                        }
-                        placeholder="Why are you rejecting this? (e.g. 'Never pitch unverified speed metrics')"
-                        className="flex-1 rounded-xl bg-black/60 border border-rose-500/40 px-3 py-2 text-xs text-white"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onApprove(
-                            task.id,
-                            false,
-                            rejectionFeedback[task.id] || 'Rejected by founder'
-                          );
-                          setShowRejectInput((prev) => ({ ...prev, [task.id]: false }));
-                        }}
-                        className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 text-white cursor-pointer"
-                      >
-                        Confirm Reject
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))}
+                ))}
             </div>
           )}
 
@@ -925,10 +957,15 @@ export default function UnifiedStudio({
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-black text-white">Step 3 • Live Output &amp; Deliverable</h3>
+                    <h3 className="text-sm font-black text-white">Step 3 • Founder Command Ledger &amp; Output</h3>
                     {activeTask?.status === 'running' && (
                       <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/30 animate-pulse">
                         <Loader2 className="w-3 h-3 animate-spin" /> Working...
+                      </span>
+                    )}
+                    {activeTask?.status === 'waiting_approval' && (
+                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                        ⚠ Approval Required
                       </span>
                     )}
                     {activeTask?.status === 'completed' && (
@@ -948,16 +985,29 @@ export default function UnifiedStudio({
               {activeTask && (
                 <div className="flex items-center gap-2">
                   <div className="flex items-center bg-white/[0.04] p-1 rounded-xl border border-white/[0.08]">
+                    {activeLedger && (
+                      <button
+                        type="button"
+                        onClick={() => setOutputTab('ledger')}
+                        className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                          outputTab === 'ledger'
+                            ? 'bg-indigo-600 text-white'
+                            : 'text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        Command View ({activeLedger.candidates.length})
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => setOutputTab('deliverable')}
                       className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                        outputTab === 'deliverable'
+                        outputTab === 'deliverable' || (!activeLedger && outputTab === 'ledger')
                           ? 'bg-indigo-600 text-white'
                           : 'text-zinc-400 hover:text-white'
                       }`}
                     >
-                      Deliverable
+                      Report
                     </button>
                     <button
                       type="button"
@@ -1016,8 +1066,8 @@ export default function UnifiedStudio({
               </div>
             )}
 
-            {/* Deliverable or Live Steps Content */}
-            <div className="p-5 sm:p-6 min-h-[260px] max-h-[600px] overflow-y-auto">
+            {/* Command Ledger, Deliverable, or Live Steps Content */}
+            <div className="p-5 sm:p-6 min-h-[260px] max-h-[750px] overflow-y-auto">
               {!activeTask ? (
                 <div className="py-12 text-center space-y-2">
                   <div className="text-3xl">🚀</div>
@@ -1026,40 +1076,45 @@ export default function UnifiedStudio({
                     Fill in the blanks in the Guided Builder above or click a 1-Click Starter Prompt to watch {activeEmployee?.name || 'your agent'} work live.
                   </p>
                 </div>
-              ) : outputTab === 'deliverable' ? (
-                activeTask.status === 'running' ? (
-                  <div className="py-12 text-center space-y-4">
-                    <Loader2 className="w-8 h-8 text-indigo-400 animate-spin mx-auto" />
-                    <div className="space-y-1">
-                      <h4 className="text-sm font-bold text-white">
-                        {activeTask.employee_name} is Researching &amp; Verifying...
-                      </h4>
-                      <p className="text-xs text-zinc-400 max-w-md mx-auto">
-                        Executing multi-hop search, checking live domain footprints, and validating evidence.
-                      </p>
-                    </div>
-                    {activeTask.steps?.length > 0 && (
-                      <div className="max-w-lg mx-auto text-left bg-black/40 border border-white/[0.06] rounded-2xl p-3.5 space-y-1.5">
-                        <div className="text-[10px] font-bold uppercase text-indigo-400">
-                          Latest Completed Step ({activeTask.steps.length}):
-                        </div>
-                        <div className="text-xs text-zinc-300">
-                          {activeTask.steps[activeTask.steps.length - 1].thought}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : activeTask.final_output ? (
-                  <div className="bg-[#07090f] rounded-2xl border border-white/[0.06] p-5 sm:p-6">
-                    <MarkdownViewer content={activeTask.final_output} />
-                  </div>
-                ) : (
-                  <div className="py-10 text-center text-zinc-400 text-xs">
-                    Task status: <strong className="text-white">{activeTask.status}</strong>. Switch to the &ldquo;Steps&rdquo; tab to inspect tool logs.
-                  </div>
-                )
-              ) : (
+              ) : outputTab === 'ledger' && activeLedger ? (
+                <MayaCommandCard
+                  ledger={activeLedger}
+                  apiBase={apiBase}
+                  onApprove={onApprove}
+                  onRefreshLedger={fetchActiveLedger}
+                />
+              ) : outputTab === 'steps' ? (
                 <ExecutionMonitor task={activeTask} auditLog={auditLog} />
+              ) : activeTask.status === 'running' ? (
+                <div className="py-12 text-center space-y-4">
+                  <Loader2 className="w-8 h-8 text-indigo-400 animate-spin mx-auto" />
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-bold text-white">
+                      {activeTask.employee_name} is Researching &amp; Verifying...
+                    </h4>
+                    <p className="text-xs text-zinc-400 max-w-md mx-auto">
+                      Executing multi-hop search, checking live domain footprints, and validating evidence.
+                    </p>
+                  </div>
+                  {activeTask.steps?.length > 0 && (
+                    <div className="max-w-lg mx-auto text-left bg-black/40 border border-white/[0.06] rounded-2xl p-3.5 space-y-1.5">
+                      <div className="text-[10px] font-bold uppercase text-indigo-400">
+                        Latest Completed Step ({activeTask.steps.length}):
+                      </div>
+                      <div className="text-xs text-zinc-300">
+                        {activeTask.steps[activeTask.steps.length - 1].thought}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : activeTask.final_output ? (
+                <div className="bg-[#07090f] rounded-2xl border border-white/[0.06] p-5 sm:p-6">
+                  <MarkdownViewer content={activeTask.final_output} />
+                </div>
+              ) : (
+                <div className="py-10 text-center text-zinc-400 text-xs">
+                  Task status: <strong className="text-white">{activeTask.status}</strong>. Switch to the &ldquo;Steps&rdquo; tab to inspect tool logs.
+                </div>
               )}
             </div>
 
